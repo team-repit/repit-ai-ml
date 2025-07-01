@@ -123,7 +123,7 @@ pose = mp_pose.Pose(
 # 2) 비디오 열기
 # ─────────────────────────────────────────────────────────────────────────────
 base_dir = os.path.dirname(os.path.abspath(__file__))
-video_path = os.path.join(base_dir, "plank_perfact.mov")
+video_path = os.path.join(base_dir, "plank_man.mov")
 if not os.path.exists(video_path):
     print(f"[Error] 비디오 파일이 존재하지 않습니다: {video_path}")
     exit(1)
@@ -256,10 +256,14 @@ while True:
             
             # 모든 조건이 만족되면 플랭크
             is_plank = all(met for _, met in conditions_met)
-            scores = evaluate_posture(shoulder_center, hip_center, knee_center,
-                          l_shoulder, l_elbow, l_wrist,
-                          r_shoulder, r_elbow, r_wrist,
-                          arms_below_body)
+            scores = evaluate_posture(
+                shoulder_center, hip_center, knee_center,
+                l_shoulder, l_elbow, l_wrist,
+                r_shoulder, r_elbow, r_wrist,
+                l_hip, l_knee,           
+                r_hip, r_knee,          
+                arms_below_body
+            )
             frame_scores.append(scores)
     
     results_list.append((frame_idx, is_plank))
