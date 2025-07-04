@@ -7,115 +7,103 @@ import numpy as np
 # Helper Functions
 # ─────────────────────────────────────────────────────────────────────────────
 def calculate_angle(A, B, C):
-    # A-B-C 세 점이 이루는 각도 계산, 꼭짓점은 B! -> BA 벡터와 BC 벡터 사이 각도
-
-    BA = np.array(A) - np.array(B) # 두 벡터 기준으로! numpy로 각도! 구하기. BA = 벡터 B → A
-    BC = np.array(C) - np.array(B) # BC = 벡터 B → C
-
-    # 이때 두 벡터 사이의 각도를 구하는 공식은 코사인 유사도 공식을 사용!!
-    # 벡터 내적 (dot product), 벡터의 크기 (norm = 유클리드 거리)
-
+    """A-B-C 세 점이 이루는 각도 계산, 꼭짓점은 B"""
+    BA = np.array(A) - np.array(B)
+    BC = np.array(C) - np.array(B)
+    
     cosine = np.dot(BA, BC) / (np.linalg.norm(BA) * np.linalg.norm(BC) + 1e-6)
-    # cosine = (BA ⋅ BC) / (|BA| * |BC|)
     cosine = np.clip(cosine, -1.0, 1.0)
-    # 계산 오차로 인해 cosine 값이 -1.0001 같은 수가 되는 걸 방지
-
+    
     return np.degrees(np.arccos(cosine))
-    # 벡터 간의 코사인 유사도 -> np.arccos()로 라디안 값을 도로 변환
 
+# 통일 필요?
 def get_grade(score):
     if score >= 90:
         return "A"
-    elif score >= 75:
+    elif score >= 80:
         return "B"
-    elif score >= 60:
+    elif score >= 70:
         return "C"
+    elif score >= 60:
+        return "D"
+    elif score >= 50:
+        return "E"
     else:
-        return "D" # 점수를 수정 해야 할까?
+        return "F"
 
-
-# 플랭크 자세에서 5가지 항목을 평가해 점수화. (몸통 직선성, 팔꿈치 각도, 엉덩이 높이, 팔 위치, 허리 과신전 여부)
-def evaluate_posture(shoulder_center, hip_center, knee_center,
+def evaluate_posture(
                      l_shoulder, l_elbow, l_wrist,
                      r_shoulder, r_elbow, r_wrist,
-                     l_hip, l_knee, r_hip, r_knee, arms_below_body):
+                     l_hip, l_knee, r_hip, r_knee,
+                     l_ear, r_ear, l_ankle, r_ankle):
+    
     scores = {}
 
-    # 몸통 직선성 판단 (어깨 -> 엉덩이 -> 무릎)
-    body_angle = calculate_angle(shoulder_center, hip_center, knee_center)
-    scores["body_straight"] = max(0, 100 - abs(180 - body_angle) * 2) # 실제 각도(body_angle)가 180도에서 얼마나 벗어났는지. (예: 170도 → 오차 10 → 감점 20 → 점수 80)
+    # 1. 몸통 직선성 평가
 
-    # 팔꿈치 각도 판단 (어깨 -> 팔꿈치 -> 손목)
+    def segment_score(angle, target=180, weight=0.6):  
+        return max(0, 100 - abs(target - angle) * weight)
+
+    l_neck_angle = calculate_angle(l_ear, l_shoulder, l_hip)
+    r_neck_angle = calculate_angle(r_ear, r_shoulder, r_hip)
+    l_back_angle = calculate_angle(l_shoulder, l_hip, l_knee)
+    r_back_angle = calculate_angle(r_shoulder, r_hip, r_knee)
+    l_leg_angle = calculate_angle(l_hip, l_knee, l_ankle)
+    r_leg_angle = calculate_angle(r_hip, r_knee, r_ankle)
+
+    neck_angle = (l_neck_angle + r_neck_angle) / 2
+    back_angle = (l_back_angle + r_back_angle) / 2
+    leg_angle = (l_leg_angle + r_leg_angle) / 2
+
+    neck_score = segment_score(neck_angle, target=175, weight=1.5)  
+    back_score = segment_score(back_angle, target=180, weight=2.0)  
+    leg_score = segment_score(leg_angle, target=180, weight=1.2)
+
+    scores["body_straight"] = (
+        neck_score * 0.3 +
+        back_score * 0.5 +
+        leg_score * 0.2
+    )
+
+    # 2. 팔꿈치 각도 판단
+
     l_elbow_angle = calculate_angle(l_shoulder, l_elbow, l_wrist)
     r_elbow_angle = calculate_angle(r_shoulder, r_elbow, r_wrist)
-    if 85 <= l_elbow_angle <= 90 or 85 <= r_elbow_angle <= 95:
-        scores["arm_angle"] = 100 # 기준 각도인 85~95도(+-5도) 사이라면 100점
+    avg_elbow_angle = (l_elbow_angle + r_elbow_angle) / 2
+    
+    # 이상적인 팔꿈치 각도: 85-95도
+    if 85 <= avg_elbow_angle <= 95:
+        scores["arm_angle"] = 100
     else:
-        deviation = min(abs(l_elbow_angle - 90), abs(r_elbow_angle - 90))
-        scores["arm_angle"] = max(0, 100 - deviation * 2)  # 90도 기준으로 얼마나 벗어났는지에 따라 감점
+        deviation = min(abs(avg_elbow_angle - 90), 45)  
+        scores["arm_angle"] = max(0, 100 - deviation * 2.5)
 
-    # 엉덩이 높이
-    hip_offset = hip_center[1] - shoulder_center[1]  # 아래로 내려갈수록 +값
-    body_height = abs(knee_center[1] - shoulder_center[1])
-
-    if body_height == 0:
-        hip_score = 0
-    else:
-        ratio = hip_offset / body_height  # 음수면 엉덩이가 어깨보다 위
-        # 0.33보다 작으면 너무 올라감, 0.5쯤이 이상적, 0.7보다 크면 너무 쳐짐
-        if 0.3 <= ratio <= 0.7:
-            hip_score = 100
-        else:
-            deviation = min(abs(ratio - 0.5), 0.5)  # 0.5를 기준으로 벗어난 정도
-            hip_score = max(0, 100 - deviation * 200)  # 감점 비율 조절 가능
-    scores["hip_level"] = hip_score
-
-
-    # 팔 위치 (팔꿈치가 어깨보다 아래에 위치하면 정상적인 플랭크 → 100점)
-    scores["arm_position"] = 100 if arms_below_body else 30
-
-    # 허리 각도 (과신전 판단)
+    # 3. 허리 과신전 판단
     l_waist_angle = calculate_angle(l_shoulder, l_hip, l_knee)
     r_waist_angle = calculate_angle(r_shoulder, r_hip, r_knee)
     avg_waist_angle = (l_waist_angle + r_waist_angle) / 2
 
-    if avg_waist_angle > 195:
-        # 허리가 너무 꺾인 경우 감점 (과신전)
-        scores["waist_bend"] = max(0, 100 - (avg_waist_angle - 180) * 3)
+    if avg_waist_angle < 155:
+        deviation = 155 - avg_waist_angle
+        scores["waist_extension"] = max(0, 100 - deviation * 2.5) 
+    elif avg_waist_angle > 195:
+        deviation = avg_waist_angle - 195
+        scores["waist_extension"] = max(0, 100 - deviation * 3.0)
     else:
-        scores["waist_bend"] = 100
+        deviation = abs(avg_waist_angle - 175)
+        scores["waist_extension"] = max(80, 100 - deviation * 1.0)  
 
-    # 엉덩이 위치 평가 (힙업 or 쳐짐)
-    hip_y_diff = abs(hip_center[1] - shoulder_center[1])
-    body_height = abs(knee_center[1] - shoulder_center[1])
-    hip_ratio = hip_y_diff / body_height if body_height > 0 else 1.0
+    return scores
 
-    if avg_waist_angle <= 195:
-        # 허리는 괜찮은데 엉덩이 위치가 비정상적인 경우
-        if hip_ratio < 0.3:  # 엉덩이가 너무 올라간 경우 (힙업)
-            scores["hip_level"] = max(0, 100 - (0.3 - hip_ratio) * 200)
-        elif hip_ratio > 0.7:  # 엉덩이가 너무 내려간 경우 (처짐)
-            scores["hip_level"] = max(0, 100 - (hip_ratio - 0.7) * 300)
-        else:
-            scores["hip_level"] = 100
-    else:
-        # 허리가 꺾인 경우는 이미 감점됐으니 hip_level은 따로 안 감점
-        scores["hip_level"] = 100
-
-
-    return scores # 각 항목에 대해 0~100점 점수를 담은 딕셔너리 반환
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Initialization
-# ─────────────────────────────────────────────────────────────────────────────
+# mediaPipe Initialization
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=False, model_complexity=1, enable_segmentation=False,
                     min_detection_confidence=0.5, smooth_landmarks=True)
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
 
-input_path  = os.path.join(base_dir, "plank_perfact.mov")
-output_path = os.path.join(base_dir, "plank_output_evaluated.mp4")
+input_path  = os.path.join(base_dir, "plank_practice.mov")
+output_path = os.path.join(base_dir, "plank_output_practice_improved.mp4")
 
 cap = cv2.VideoCapture(input_path)
 if not cap.isOpened():
@@ -134,14 +122,17 @@ overlay_data = None
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main Loop (영상 프레임을 하나씩 처리하며 MediaPipe로 사람 자세를 분석)
-# ─────────────────────────────────────────────────────────────────────────────
+# Main Loop
+
+frame_count = 0
+evaluation_interval = 15  # 15프레임마다 평가 (약 0.5초마다)
+
 while True:
-    ret, frame = cap.read() # 프레임 가져오기
+    ret, frame = cap.read()
     if not ret:
         break
-
+    
+    frame_count += 1
     image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = pose.process(image_rgb)
 
@@ -149,10 +140,9 @@ while True:
         h, w, _ = frame.shape
         lm = results.pose_landmarks.landmark
 
-        # 포즈 랜드마크 추출 후 어깨, 엉덩이, 무릎 등 주요 포인트 좌표 계산
-
         def get_point(l): return (int(l.x * w), int(l.y * h))
 
+        # 주요 포인트 추출
         l_shoulder = get_point(lm[mp_pose.PoseLandmark.LEFT_SHOULDER])
         r_shoulder = get_point(lm[mp_pose.PoseLandmark.RIGHT_SHOULDER])
         l_hip = get_point(lm[mp_pose.PoseLandmark.LEFT_HIP])
@@ -163,50 +153,90 @@ while True:
         r_elbow = get_point(lm[mp_pose.PoseLandmark.RIGHT_ELBOW])
         l_wrist = get_point(lm[mp_pose.PoseLandmark.LEFT_WRIST])
         r_wrist = get_point(lm[mp_pose.PoseLandmark.RIGHT_WRIST])
+        l_ear = get_point(lm[mp_pose.PoseLandmark.LEFT_EAR])
+        r_ear = get_point(lm[mp_pose.PoseLandmark.RIGHT_EAR])
+        l_ankle = get_point(lm[mp_pose.PoseLandmark.LEFT_ANKLE])
+        r_ankle = get_point(lm[mp_pose.PoseLandmark.RIGHT_ANKLE])
 
+        # 중심점 계산
         shoulder_center = ((l_shoulder[0] + r_shoulder[0]) // 2,
                            (l_shoulder[1] + r_shoulder[1]) // 2)
         hip_center = ((l_hip[0] + r_hip[0]) // 2,
                       (l_hip[1] + r_hip[1]) // 2)
         knee_center = ((l_knee[0] + r_knee[0]) // 2,
                        (l_knee[1] + r_knee[1]) // 2)
+        ear = ((l_ear[0] + r_ear[0]) // 2, (l_ear[1] + r_ear[1]) // 2)
+        ankle = ((l_ankle[0] + r_ankle[0]) // 2, (l_ankle[1] + r_ankle[1]) // 2)
 
+
+        # 거리 계산
+        def euclidean(a, b):
+            return np.linalg.norm(np.array(a) - np.array(b))
+
+        # 기본 조건
         arms_below = (l_elbow[1] > shoulder_center[1] and r_elbow[1] > shoulder_center[1])
 
-        # 플랭크 조건이 만족되면 평가
+        # 어깨~엉덩이 라인이 수평에 가까운가
+        shoulder_hip_horizontal = abs(shoulder_center[1] - hip_center[1]) < abs(shoulder_center[0] - hip_center[0])
+
+        # 어깨~무릎이 충분히 긴가 (앉아있는 자세 제외)
+        shoulder_knee_length = euclidean(shoulder_center, knee_center)
+        is_long_enough = shoulder_knee_length > 100
+
+        # 무릎~발목이 수직에 가까운가 (서 있는 자세 제거)
+        knee_ankle_diff_x = abs(knee_center[0] - ankle[0])
+        knee_ankle_diff_y = abs(knee_center[1] - ankle[1])
+        knee_ankle_vertical_ratio = knee_ankle_diff_y / (knee_ankle_diff_x + 1e-5)
+        is_leg_horizontal = knee_ankle_vertical_ratio < 2.5  # 다리 뻗음
+
+        # 전체 조건
         is_plank_pose = (
             arms_below and
-            hip_center[1] > shoulder_center[1] and
-            abs(knee_center[1] - shoulder_center[1]) > 50  # 몸통 높이 확보
+            shoulder_hip_horizontal and
+            is_long_enough and
+            is_leg_horizontal
         )
 
-        if is_plank_pose:
-            # 플랭크 자세일 경우만 평가 진행
-            scores = evaluate_posture(shoulder_center, hip_center, knee_center,
+        # 일정 간격으로만 평가 수행 (성능 최적화)
+        if is_plank_pose and frame_count % evaluation_interval == 0:
+            scores = evaluate_posture(
                                     l_shoulder, l_elbow, l_wrist,
                                     r_shoulder, r_elbow, r_wrist,
-                                    l_hip, l_knee, r_hip, r_knee, arms_below)
+                                    l_hip, l_knee, r_hip, r_knee, l_ear, r_ear, l_ankle, r_ankle)
 
             avg_score = np.mean(list(scores.values()))
             grade = get_grade(avg_score)
 
-            # A ~ F 어떤 등급이든
-            overlay_data = {"grade": grade, "scores": scores}
+            overlay_data = {
+                "grade": grade,
+                "avg_score": avg_score,
+                "scores": scores
+            }
             display_countdown = display_duration
-        else:
-            # 플랭크 자세가 아니면 아무것도 띄우지 않음
-            overlay_data = None
 
+        # 포즈 랜드마크 그리기
         mp.solutions.drawing_utils.draw_landmarks(
             frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
             landmark_drawing_spec=mp.solutions.drawing_styles.get_default_pose_landmarks_style())
 
-    # Overlay 출력
-    if display_countdown > 0 and overlay_data:
-        text = f"Grade: {overlay_data['grade']} | " + \
-               " ".join([f"{k}:{v:.0f}" for k, v in overlay_data['scores'].items()])
+        # 플랭크 자세 여부 표시
+        pose_text = "PLANK DETECTED" if is_plank_pose else "NOT PLANK POSE"
+        color = (0, 255, 0) if is_plank_pose else (0, 0, 255)
+        cv2.putText(frame, pose_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
 
-        cv2.putText(frame, text, (150, 180), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 255), 4)
+    # 평가 결과 오버레이
+    if display_countdown > 0 and overlay_data:
+        # 등급과 총점 표시
+        grade_text = f"Grade: {overlay_data['grade']} ({overlay_data['avg_score']:.1f})"
+        cv2.putText(frame, grade_text, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+        
+        # 세부 점수 표시
+        y_offset = 140
+        for item, score in overlay_data['scores'].items():
+            detail_text = f"{item}: {score:.0f}"
+            cv2.putText(frame, detail_text, (50, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+            y_offset += 30
+        
         display_countdown -= 1
 
     out.write(frame)
@@ -214,4 +244,4 @@ while True:
 cap.release()
 out.release()
 pose.close()
-print(f"[완료] 결과 동영상 저장: {output_path}")
+print(f"[완료] 개선된 결과 동영상 저장: {output_path}")
