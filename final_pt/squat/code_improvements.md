@@ -24,6 +24,7 @@ class AdvancedFilteringSystem:
         self.window_size = window_size
         self.values = deque(maxlen=window_size)
         self.velocities = deque(maxlen=window_size-1)
+ 
         
     def update(self, value: float) -> Dict[str, float]:
         # 이동평균 + 속도 계산
