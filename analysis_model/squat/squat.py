@@ -164,7 +164,7 @@ def save_report(report_path: str, total_reps: int, results: List[Dict]):
 
 
 # --- 메인 실행 로직 ---
-video_path = 'squat_video.mp4'
+video_path = 'squat_video2.mp4'
 output_report_path = "squat_analysis_report.txt"
 output_video_path = "squat_analysis_video.mp4"
 
