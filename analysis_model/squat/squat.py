@@ -164,7 +164,7 @@ def save_report(report_path: str, total_reps: int, results: List[Dict]):
 
 
 # --- 메인 실행 로직 ---
-video_path = 'squat_video2.mp4'
+video_path = 'squat_video.mp4'
 output_report_path = "squat_analysis_report.txt"
 output_video_path = "squat_analysis_video.mp4"
 
@@ -252,21 +252,23 @@ while cap.isOpened():
                 errors_in_frame = grader.evaluate_errors(lm_data, angles, current_phase, rep_start_hip_y)
                 current_rep_errors.update(errors_in_frame)
 
-            # --- 화면 표시 로직 (이전과 동일) ---
-            cv2.rectangle(image, (0,0), (550, 72), (245,117,16), -1)
-            cv2.putText(image, 'REPS', (15,20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1, cv2.LINE_AA)
-            cv2.putText(image, str(counter), (10,60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 2, cv2.LINE_AA)
-            cv2.putText(image, 'PHASE', (150,20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1, cv2.LINE_AA)
-            cv2.putText(image, current_phase, (145,60), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255,255,255), 2, cv2.LINE_AA)
-            cv2.putText(image, 'LAST REP GRADE', (350,20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1, cv2.LINE_AA)
-            cv2.putText(image, last_rep_grade, (370,60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 2, cv2.LINE_AA)
-            
-            feedback = ", ".join(current_rep_errors) if current_rep_errors else "자세 좋습니다!"
-            feedback_color = (0, 0, 255) if current_rep_errors else (0, 255, 0)
-            cv2.rectangle(image, (0, 410), (640, 480), feedback_color, -1)
-            cv2.putText(image, 'CURRENT ERRORS', (15, 430), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1, cv2.LINE_AA)
-            cv2.putText(image, feedback, (10, 465), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255,255,255), 2, cv2.LINE_AA)
-            
+            # ------------------ 화면 표시 정보 수정 ------------------
+        # 박스 높이를 150 -> 75로 변경
+        cv2.rectangle(image, (0,0), (frame_width, 75), (245,117,16), -1)
+        
+        # REPS (Y 위치와 폰트 크기 조정)
+        cv2.putText(image, 'REPS', (int(frame_width * 0.1), 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
+        cv2.putText(image, str(counter), (int(frame_width * 0.1), 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
+        
+        # PHASE (Y 위치와 폰트 크기 조정)
+        cv2.putText(image, 'PHASE', (int(frame_width * 0.4), 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
+        cv2.putText(image, current_phase, (int(frame_width * 0.35), 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
+
+        # LAST REP GRADE (Y 위치와 폰트 크기 조정)
+        cv2.putText(image, 'GRADE', (int(frame_width * 0.75), 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
+        cv2.putText(image, last_rep_grade, (int(frame_width * 0.78), 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
+        # ----------------------------------------------------
+
     except Exception as e:
         pass
     

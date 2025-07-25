@@ -95,7 +95,7 @@ while True:
         # 예:
         #    r_shoulder = (lm[mp_pose.PoseLandmark.RIGHT_SHOULDER].x * w,
         #                  lm[mp_pose.PoseLandmark.RIGHT_SHOULDER].y * h)
-        #    r_hip      = (lm[mp_pose.PoseLandmark.RIGHT_HIP].x * w,
+        #    r_hip      = (lm[mp_pose.Pos샤eLandmark.RIGHT_HIP].x * w,
         #                  lm[mp_pose.PoseLandmark.RIGHT_HIP].y * h)
         #    r_knee     = (lm[mp_pose.PoseLandmark.RIGHT_KNEE].x * w,
         #                  lm[mp_pose.PoseLandmark.RIGHT_KNEE].y * h)

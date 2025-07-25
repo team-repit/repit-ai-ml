@@ -258,10 +258,10 @@ while cap.isOpened():
     cv2.putText(image, grade, (370,60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 2, cv2.LINE_AA)
     
     # 피드백 박스
-    feedback_color = (0, 0, 255) if feedback != "자세 좋습니다!" else (0, 255, 0)
-    cv2.rectangle(image, (0, 410), (640, 480), feedback_color, -1)
-    cv2.putText(image, 'FEEDBACK', (15, 430), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1, cv2.LINE_AA)
-    cv2.putText(image, feedback, (10, 465), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255,255,255), 2, cv2.LINE_AA)
+    # feedback_color = (0, 0, 255) if feedback != "자세 좋습니다!" else (0, 255, 0)
+    # cv2.rectangle(image, (0, 410), (640, 480), feedback_color, -1)
+    # cv2.putText(image, 'FEEDBACK', (15, 430), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1, cv2.LINE_AA)
+    # cv2.putText(image, feedback, (10, 465), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255,255,255), 2, cv2.LINE_AA)
 
     mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
                             mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2), 
