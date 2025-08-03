@@ -186,16 +186,13 @@ def initialize_camera():
     camera_index = available_cameras[0]
     print(f"카메라 {camera_index}를 사용합니다.")
     
-    # 카메라 초기화
-    cap = cv2.VideoCapture(camera_index)
+    # 카메라 초기화 (V4L2 백엔드 명시)
+    cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
     
     # 젯슨 최적화 설정
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)  # 젯슨에서는 낮은 해상도 권장
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     cap.set(cv2.CAP_PROP_FPS, 30)
-    
-    # V4L2 백엔드 사용 (리눅스에서 더 안정적)
-    cap.set(cv2.CAP_PROP_BACKEND, cv2.CAP_V4L2)
     
     if not cap.isOpened():
         print(f"카메라 {camera_index}를 열 수 없습니다.")
@@ -216,7 +213,7 @@ def main():
     print("=== 젯슨 실시간 스쿼트 분석 ===")
     print("카메라 초기화 중...")
     
-    # 카메라 초기화
+    # 카메라 초기화 
     cap = initialize_camera()
     
     if cap is None:
@@ -259,14 +256,11 @@ def main():
     print("종료하려면 'q'를 누르세요.")
     print("="*50)
     
-    frame_count = 0
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret: 
             print("프레임을 읽을 수 없습니다.")
             break
-        
-        frame_count += 1
         
         # 현재 시간 계산
         current_time = time.time()
@@ -278,7 +272,6 @@ def main():
             print("\n15초 분석 완료!")
             break
         
-        # 프레임 처리
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image.flags.writeable = False
         results = pose.process(image)
@@ -368,17 +361,14 @@ def main():
         cv2.putText(image, 'Press Q to quit early', (10, frame_height-20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2, cv2.LINE_AA)
         # ----------------------------------------------------
         
-        # 포즈 랜드마크 그리기
-        if results.pose_landmarks:
-            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
-                                    mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2), 
-                                    mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2))               
+        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+                                mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2), 
+                                mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2))               
         
         out.write(image)
-        cv2.imshow('Jetson Real-time Squat Analysis', image)
+        cv2.imshow('Real-time Squat Analysis (Jetson)', image)
 
         if cv2.waitKey(10) & 0xFF == ord('q'): 
-            print("\n사용자가 조기 종료했습니다.")
             break
 
     # 마지막 스쿼트가 완료되지 않았다면 처리
@@ -392,11 +382,9 @@ def main():
 
     # 결과 저장
     save_report(output_report_path, counter, all_rep_results)
-    print(f"\n분석 완료!")
-    print(f"분석 영상: '{output_video_path}'")
-    print(f"분석 리포트: '{output_report_path}'")
+    print(f"분석 영상이 '{output_video_path}'에 저장되었습니다.")
+    print(f"분석 리포트가 '{output_report_path}'에 저장되었습니다.")
     print(f"총 {counter}회의 스쿼트를 분석했습니다.")
-    print(f"처리된 프레임 수: {frame_count}")
 
 if __name__ == "__main__":
     main() 
