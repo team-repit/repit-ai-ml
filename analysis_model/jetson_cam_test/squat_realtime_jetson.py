@@ -195,113 +195,30 @@ def save_report(report_path: str, total_reps: int, results: List[Dict]):
     print(f"리포트가 '{report_path}'에 저장되었습니다.")
 
 def initialize_camera():
-    """젯슨 카메라 초기화 - JetsonHacksNano/CSI-Camera 방식"""
+    """젯슨 카메라 초기화 - simple_camera.py 방식"""
     print("젯슨 카메라 초기화 중...")
     
-    # 방법 1: GStreamer 파이프라인 사용 (JetsonHacksNano 방식)
-    try:
-        gst_pipeline = gstreamer_pipeline(
-            sensor_id=0,
-            capture_width=1920,
-            capture_height=1080,
-            display_width=960,
-            display_height=540,
-            framerate=30,
-            flip_method=0
-        )
-        
-        print(f"GStreamer 파이프라인 사용 중...")
-        cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
-        
-        if cap.isOpened():
-            ret, frame = cap.read()
-            if ret:
-                actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                actual_fps = cap.get(cv2.CAP_PROP_FPS)
-                
-                print(f"✅ GStreamer 카메라 초기화 성공!")
-                print(f"   설정: {actual_width}x{actual_height} @ {actual_fps}fps")
-                return cap
-            else:
-                print("❌ GStreamer 카메라 열기 성공했지만 프레임 읽기 실패")
-        else:
-            print("❌ GStreamer 카메라 열기 실패")
-    except Exception as e:
-        print(f"GStreamer 에러: {e}")
+    # simple_camera.py와 동일한 방식
+    gst_pipeline = gstreamer_pipeline(flip_method=0)
+    print(f"GStreamer 파이프라인: {gst_pipeline}")
     
-    if 'cap' in locals():
-        cap.release()
-    
-    # 방법 2: V4L2 백엔드 사용
-    print("GStreamer 실패, V4L2 백엔드 시도...")
-    try:
-        cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
-        if cap.isOpened():
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-            cap.set(cv2.CAP_PROP_FPS, 30)
-            
-            ret, frame = cap.read()
-            if ret:
-                actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                actual_fps = cap.get(cv2.CAP_PROP_FPS)
-                
-                print(f"✅ V4L2 카메라 초기화 성공!")
-                print(f"   설정: {actual_width}x{actual_height} @ {actual_fps}fps")
-                return cap
-            else:
-                print("❌ V4L2 카메라 열기 성공했지만 프레임 읽기 실패")
-        else:
-            print("❌ V4L2 카메라 열기 실패")
-    except Exception as e:
-        print(f"V4L2 에러: {e}")
-    
-    if 'cap' in locals():
-        cap.release()
-    
-    # 방법 3: 기본 백엔드 사용
-    print("V4L2 실패, 기본 백엔드 시도...")
-    try:
-        cap = cv2.VideoCapture(0)
-        if cap.isOpened():
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-            cap.set(cv2.CAP_PROP_FPS, 30)
-            
-            ret, frame = cap.read()
-            if ret:
-                actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                actual_fps = cap.get(cv2.CAP_PROP_FPS)
-                
-                print(f"✅ 기본 백엔드 카메라 초기화 성공!")
-                print(f"   설정: {actual_width}x{actual_height} @ {actual_fps}fps")
-                return cap
-            else:
-                print("❌ 기본 백엔드 카메라 열기 성공했지만 프레임 읽기 실패")
-        else:
-            print("❌ 기본 백엔드 카메라 열기 실패")
-    except Exception as e:
-        print(f"기본 백엔드 에러: {e}")
-    
-    if 'cap' in locals():
-        cap.release()
-    
-    print("❌ 모든 카메라 초기화 방법 실패")
-    return None
+    video_capture = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
+    if video_capture.isOpened():
+        print("✅ GStreamer 카메라 초기화 성공!")
+        return video_capture
+    else:
+        print("❌ GStreamer 카메라 열기 실패")
+        return None
 
 def main():
     """실시간 카메라를 통한 스쿼트 분석 메인 함수 (젯슨 최적화)"""
     
     print("=== 젯슨 실시간 스쿼트 분석 ===")
-    print("카메라 초기화 중...")
     
-    # 카메라 초기화 
-    cap = initialize_camera()
+    # 카메라 초기화 (simple_camera.py 방식)
+    video_capture = initialize_camera()
     
-    if cap is None:
+    if video_capture is None:
         print("카메라를 초기화할 수 없습니다.")
         print("\n문제 해결 방법:")
         print("1. 카메라가 연결되어 있는지 확인")
@@ -310,9 +227,13 @@ def main():
         print("4. 다른 카메라 장치 시도: v4l2-ctl --list-devices")
         return
     
+    # 윈도우 설정 (simple_camera.py 방식)
+    window_title = "Real-time Squat Analysis (Jetson)"
+    window_handle = cv2.namedWindow(window_title, cv2.WINDOW_AUTOSIZE)
+    
     # 영상 저장을 위한 설정
-    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frame_width = int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = 30.0
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     
@@ -338,146 +259,149 @@ def main():
     
     print("\n스쿼트 분석을 시작합니다. 15초간 카메라가 켜집니다.")
     print("스쿼트 동작을 시작하세요!")
-    print("종료하려면 'q'를 누르세요.")
+    print("종료하려면 'q' 또는 ESC를 누르세요.")
     print("="*50)
     
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret: 
-            print("프레임을 읽을 수 없습니다.")
-            break
-        
-        # 현재 시간 계산
-        current_time = time.time()
-        elapsed_time = current_time - start_time
-        remaining_time = max(0, recording_duration - elapsed_time)
-        
-        # 15초 경과 시 종료
-        if elapsed_time >= recording_duration:
-            print("\n15초 분석 완료!")
-            break
-        
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image.flags.writeable = False
-        results = pose.process(image)
-        image.flags.writeable = True
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        
-        try:
-            landmarks = results.pose_landmarks.landmark
-            h, w, _ = image.shape
+    try:
+        while True:
+            ret_val, frame = video_capture.read()
+            if not ret_val:
+                print("프레임을 읽을 수 없습니다.")
+                break
             
-            lm_data = {
-                'left_shoulder': [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x * w, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y * h],
-                'left_hip': [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x * w, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y * h],
-                'left_knee': [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x * w, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y * h],
-                'left_ankle': [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x * w, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y * h],
-                'left_foot_index': [landmarks[mp_pose.PoseLandmark.LEFT_FOOT_INDEX.value].x * w, landmarks[mp_pose.PoseLandmark.LEFT_FOOT_INDEX.value].y * h],
-                'right_shoulder': [landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x * w, landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y * h],
-                'right_hip': [landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].x * w, landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].y * h],
-                'right_knee': [landmarks[mp_pose.PoseLandmark.RIGHT_KNEE.value].x * w, landmarks[mp_pose.PoseLandmark.RIGHT_KNEE.value].y * h],
-                'right_ankle': [landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE.value].x * w, landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE.value].y * h],
-                'right_foot_index': [landmarks[mp_pose.PoseLandmark.RIGHT_FOOT_INDEX.value].x * w, landmarks[mp_pose.PoseLandmark.RIGHT_FOOT_INDEX.value].y * h],
-                'left_heel_visibility': landmarks[mp_pose.PoseLandmark.LEFT_HEEL.value].visibility,
-                'right_heel_visibility': landmarks[mp_pose.PoseLandmark.RIGHT_HEEL.value].visibility,
-            }
+            # 현재 시간 계산
+            current_time = time.time()
+            elapsed_time = current_time - start_time
+            remaining_time = max(0, recording_duration - elapsed_time)
             
-            angles = {}
-            use_left_side = landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].visibility > landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].visibility
-            if use_left_side:
-                angles['hip'] = calculate_angle(lm_data['left_shoulder'], lm_data['left_hip'], lm_data['left_knee'])
-                angles['knee'] = calculate_angle(lm_data['left_hip'], lm_data['left_knee'], lm_data['left_ankle'])
-                angles['ankle'] = calculate_angle(lm_data['left_knee'], lm_data['left_ankle'], lm_data['left_foot_index'])
-                angles['torso'] = calculate_angle(lm_data['left_hip'], lm_data['left_shoulder'], [lm_data['left_shoulder'][0], lm_data['left_shoulder'][1] - 1])
+            # 15초 경과 시 종료
+            if elapsed_time >= recording_duration:
+                print("\n15초 분석 완료!")
+                break
+            
+            # MediaPipe 처리
+            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image.flags.writeable = False
+            results = pose.process(image)
+            image.flags.writeable = True
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            
+            try:
+                landmarks = results.pose_landmarks.landmark
+                h, w, _ = image.shape
+                
+                lm_data = {
+                    'left_shoulder': [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x * w, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y * h],
+                    'left_hip': [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x * w, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y * h],
+                    'left_knee': [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x * w, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y * h],
+                    'left_ankle': [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x * w, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y * h],
+                    'left_foot_index': [landmarks[mp_pose.PoseLandmark.LEFT_FOOT_INDEX.value].x * w, landmarks[mp_pose.PoseLandmark.LEFT_FOOT_INDEX.value].y * h],
+                    'right_shoulder': [landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x * w, landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y * h],
+                    'right_hip': [landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].x * w, landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].y * h],
+                    'right_knee': [landmarks[mp_pose.PoseLandmark.RIGHT_KNEE.value].x * w, landmarks[mp_pose.PoseLandmark.RIGHT_KNEE.value].y * h],
+                    'right_ankle': [landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE.value].x * w, landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE.value].y * h],
+                    'right_foot_index': [landmarks[mp_pose.PoseLandmark.RIGHT_FOOT_INDEX.value].x * w, landmarks[mp_pose.PoseLandmark.RIGHT_FOOT_INDEX.value].y * h],
+                    'left_heel_visibility': landmarks[mp_pose.PoseLandmark.LEFT_HEEL.value].visibility,
+                    'right_heel_visibility': landmarks[mp_pose.PoseLandmark.RIGHT_HEEL.value].visibility,
+                }
+                
+                angles = {}
+                use_left_side = landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].visibility > landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].visibility
+                if use_left_side:
+                    angles['hip'] = calculate_angle(lm_data['left_shoulder'], lm_data['left_hip'], lm_data['left_knee'])
+                    angles['knee'] = calculate_angle(lm_data['left_hip'], lm_data['left_knee'], lm_data['left_ankle'])
+                    angles['ankle'] = calculate_angle(lm_data['left_knee'], lm_data['left_ankle'], lm_data['left_foot_index'])
+                    angles['torso'] = calculate_angle(lm_data['left_hip'], lm_data['left_shoulder'], [lm_data['left_shoulder'][0], lm_data['left_shoulder'][1] - 1])
+                else:
+                    angles['hip'] = calculate_angle(lm_data['right_shoulder'], lm_data['right_hip'], lm_data['right_knee'])
+                    angles['knee'] = calculate_angle(lm_data['right_hip'], lm_data['right_knee'], lm_data['right_ankle'])
+                    angles['ankle'] = calculate_angle(lm_data['right_knee'], lm_data['right_ankle'], lm_data['right_foot_index'])
+                    angles['torso'] = calculate_angle(lm_data['right_hip'], lm_data['right_shoulder'], [lm_data['right_shoulder'][0], lm_data['right_shoulder'][1] - 1])
+                
+                if 'knee' in angles:
+                    knee_angle = angles['knee']
+                    
+                    if knee_angle > 160:
+                        if stage == 'down': 
+                            final_grade = grader.get_grade_from_errors(list(current_rep_errors))
+                            all_rep_results.append({'rep': counter, 'grade': final_grade, 'errors': list(current_rep_errors)})
+                            last_rep_grade = final_grade
+                            current_rep_errors.clear()
+                        stage = "up"
+
+                    if knee_angle < 100 and stage == 'up':
+                        stage = "down"
+                        counter += 1
+                        rep_start_hip_y = (lm_data['left_hip'][1] + lm_data['right_hip'][1]) / 2
+
+                    current_phase = ""
+                    if stage == "up": current_phase = "ASCEND" if knee_angle < 170 else "READY"
+                    elif stage == "down": current_phase = "BOTTOM" if knee_angle < 90 else "DESCEND"
+                    
+                    if stage == "down" or stage == "up":
+                        errors_in_frame = grader.evaluate_errors(lm_data, angles, current_phase, rep_start_hip_y)
+                        current_rep_errors.update(errors_in_frame)
+
+            except Exception as e:
+                pass
+            
+            # 화면 표시 정보
+            # 상단 정보 박스
+            cv2.rectangle(image, (0,0), (frame_width, 120), (245,117,16), -1)
+            
+            # 타이머 표시
+            cv2.putText(image, f'TIME: {remaining_time:.1f}s', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
+            
+            # REPS
+            cv2.putText(image, 'REPS', (int(frame_width * 0.3), 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
+            cv2.putText(image, str(counter), (int(frame_width * 0.3), 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
+            
+            # PHASE
+            cv2.putText(image, 'PHASE', (int(frame_width * 0.5), 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
+            cv2.putText(image, current_phase if 'current_phase' in locals() else "READY", (int(frame_width * 0.5), 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
+
+            # LAST REP GRADE
+            cv2.putText(image, 'GRADE', (int(frame_width * 0.7), 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
+            cv2.putText(image, last_rep_grade, (int(frame_width * 0.7), 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
+            
+            # 하단 안내 메시지
+            cv2.rectangle(image, (0, frame_height-50), (frame_width, frame_height), (0,0,0), -1)
+            cv2.putText(image, 'Press Q or ESC to quit', (10, frame_height-20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2, cv2.LINE_AA)
+            
+            # 포즈 랜드마크 그리기
+            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+                                    mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2), 
+                                    mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2))
+            
+            # 영상 저장
+            out.write(image)
+            
+            # 윈도우 표시 (simple_camera.py 방식)
+            if cv2.getWindowProperty(window_title, cv2.WND_PROP_AUTOSIZE) >= 0:
+                cv2.imshow(window_title, image)
             else:
-                angles['hip'] = calculate_angle(lm_data['right_shoulder'], lm_data['right_hip'], lm_data['right_knee'])
-                angles['knee'] = calculate_angle(lm_data['right_hip'], lm_data['right_knee'], lm_data['right_ankle'])
-                angles['ankle'] = calculate_angle(lm_data['right_knee'], lm_data['right_ankle'], lm_data['right_foot_index'])
-                angles['torso'] = calculate_angle(lm_data['right_hip'], lm_data['right_shoulder'], [lm_data['right_shoulder'][0], lm_data['right_shoulder'][1] - 1])
+                break
             
-            if 'knee' in angles:
-                knee_angle = angles['knee']
+            # 키 입력 처리 (simple_camera.py 방식)
+            keyCode = cv2.waitKey(10) & 0xFF
+            if keyCode == 27 or keyCode == ord('q'):
+                break
                 
-                if knee_angle > 160:
-                    if stage == 'down': 
-                        final_grade = grader.get_grade_from_errors(list(current_rep_errors))
-                        all_rep_results.append({'rep': counter, 'grade': final_grade, 'errors': list(current_rep_errors)})
-                        last_rep_grade = final_grade
-                        current_rep_errors.clear()
-                    stage = "up"
+    finally:
+        # 마지막 스쿼트가 완료되지 않았다면 처리
+        if stage == 'down' and current_rep_errors:
+            final_grade = grader.get_grade_from_errors(list(current_rep_errors))
+            all_rep_results.append({'rep': counter, 'grade': final_grade, 'errors': list(current_rep_errors)})
 
-                if knee_angle < 100 and stage == 'up':
-                    stage = "down"
-                    counter += 1
-                    rep_start_hip_y = (lm_data['left_hip'][1] + lm_data['right_hip'][1]) / 2
+        video_capture.release()
+        out.release()
+        cv2.destroyAllWindows()
 
-                current_phase = ""
-                if stage == "up": current_phase = "ASCEND" if knee_angle < 170 else "READY"
-                elif stage == "down": current_phase = "BOTTOM" if knee_angle < 90 else "DESCEND"
-                
-                if stage == "down" or stage == "up":
-                    errors_in_frame = grader.evaluate_errors(lm_data, angles, current_phase, rep_start_hip_y)
-                    current_rep_errors.update(errors_in_frame)
-
-        except Exception as e:
-            pass
-        
-        # ------------------ 화면 표시 정보 수정 ------------------
-        # 상단 정보 박스
-        cv2.rectangle(image, (0,0), (frame_width, 120), (245,117,16), -1)
-        
-        # 타이머 표시
-        cv2.putText(image, f'TIME: {remaining_time:.1f}s', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
-        
-        # REPS
-        cv2.putText(image, 'REPS', (int(frame_width * 0.3), 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
-        cv2.putText(image, str(counter), (int(frame_width * 0.3), 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
-        
-        # PHASE
-        cv2.putText(image, 'PHASE', (int(frame_width * 0.5), 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
-        cv2.putText(image, current_phase if 'current_phase' in locals() else "READY", (int(frame_width * 0.5), 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
-
-        # LAST REP GRADE
-        cv2.putText(image, 'GRADE', (int(frame_width * 0.7), 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
-        cv2.putText(image, last_rep_grade, (int(frame_width * 0.7), 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
-        
-        # 하단 안내 메시지
-        cv2.rectangle(image, (0, frame_height-50), (frame_width, frame_height), (0,0,0), -1)
-        cv2.putText(image, 'Press Q to quit early', (10, frame_height-20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2, cv2.LINE_AA)
-        # ----------------------------------------------------
-        
-        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
-                                mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2), 
-                                mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2))               
-        
-        out.write(image)
-        
-        # GTK+ 환경을 고려한 윈도우 처리
-        window_title = 'Real-time Squat Analysis (Jetson)'
-        if cv2.getWindowProperty(window_title, cv2.WND_PROP_AUTOSIZE) >= 0:
-            cv2.imshow(window_title, image)
-        else:
-            break
-        
-        # ESC 키 또는 'q' 키로 종료
-        keyCode = cv2.waitKey(10) & 0xFF
-        if keyCode == 27 or keyCode == ord('q'): 
-            break
-
-    # 마지막 스쿼트가 완료되지 않았다면 처리
-    if stage == 'down' and current_rep_errors:
-        final_grade = grader.get_grade_from_errors(list(current_rep_errors))
-        all_rep_results.append({'rep': counter, 'grade': final_grade, 'errors': list(current_rep_errors)})
-
-    cap.release()
-    out.release()
-    cv2.destroyAllWindows()
-
-    # 결과 저장
-    save_report(output_report_path, counter, all_rep_results)
-    print(f"분석 영상이 '{output_video_path}'에 저장되었습니다.")
-    print(f"분석 리포트가 '{output_report_path}'에 저장되었습니다.")
-    print(f"총 {counter}회의 스쿼트를 분석했습니다.")
+        # 결과 저장
+        save_report(output_report_path, counter, all_rep_results)
+        print(f"분석 영상이 '{output_video_path}'에 저장되었습니다.")
+        print(f"분석 리포트가 '{output_report_path}'에 저장되었습니다.")
+        print(f"총 {counter}회의 스쿼트를 분석했습니다.")
 
 if __name__ == "__main__":
     main() 
