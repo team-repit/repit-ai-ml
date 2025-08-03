@@ -25,6 +25,31 @@ def calculate_angle(a: list, b: list, c: list) -> float:
         
     return angle
 
+def gstreamer_pipeline(
+    capture_width=1280,
+    capture_height=720,
+    display_width=1280,
+    display_height=720,
+    framerate=30,
+    flip_method=0,
+):
+    """
+    GStreamer 파이프라인 생성
+    JetsonHacksNano/CSI-Camera의 simple_camera.py에서 가져온 함수
+    """
+    return (
+        "nvarguscamerasrc ! "
+        "video/x-raw(memory:NVMM), "
+        f"width=(int){capture_width}, height=(int){capture_height}, "
+        f"format=(string)NV12, framerate=(fraction){framerate}/1 ! "
+        f"nvvidconv flip-method={flip_method} ! "
+        "video/x-raw, "
+        f"width=(int){display_width}, height=(int){display_height}, "
+        "format=(string)BGRx ! "
+        "videoconvert ! "
+        "video/x-raw, format=(string)BGR ! appsink"
+    )
+
 class ComprehensiveSquatGrader:
     """
     'AI 자세 교정을 위한 종합 평가 기준'을 기반으로 한 새로운 평가 클래스.
@@ -164,65 +189,101 @@ def save_report(report_path: str, total_reps: int, results: List[Dict]):
     print(f"리포트가 '{report_path}'에 저장되었습니다.")
 
 def initialize_camera():
-    """젯슨 환경에서 카메라를 초기화하는 함수"""
-    print("카메라 초기화 중...")
+    """젯슨 카메라 초기화 - JetsonHacksNano/CSI-Camera 방식"""
+    print("젯슨 카메라 초기화 중...")
     
-    # 젯슨 오린 나노용 GStreamer 파이프라인
-    gst_str = (
-        "nvarguscamerasrc ! "
-        "video/x-raw(memory:NVMM), width=1280, height=720, format=NV12, framerate=30/1 ! "
-        "nvvidconv flip-method=0 ! "
-        "video/x-raw, format=BGRx ! "
-        "videoconvert ! "
-        "video/x-raw, format=BGR ! "
-        "appsink"
-    )
-    
-    print("GStreamer 파이프라인 사용 중...")
-    print(f"파이프라인: {gst_str}")
-    
-    # GStreamer로 카메라 초기화
-    cap = cv2.VideoCapture(gst_str, cv2.CAP_GSTREAMER)
-    
-    if not cap.isOpened():
-        print("GStreamer로 카메라를 열 수 없습니다. V4L2로 시도합니다...")
+    # 방법 1: GStreamer 파이프라인 사용 (JetsonHacksNano 방식)
+    try:
+        gst_pipeline = gstreamer_pipeline(
+            capture_width=1280,
+            capture_height=720,
+            display_width=1280,
+            display_height=720,
+            framerate=30,
+            flip_method=0
+        )
         
-        # GStreamer 실패 시 V4L2로 폴백
-        available_cameras = []
-        for i in range(10):
-            cap_v4l2 = cv2.VideoCapture(i, cv2.CAP_V4L2)
-            if cap_v4l2.isOpened():
-                ret, frame = cap_v4l2.read()
-                if ret:
-                    available_cameras.append(i)
-                    print(f"카메라 {i} 사용 가능")
-                cap_v4l2.release()
+        print(f"GStreamer 파이프라인 사용 중...")
+        cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
         
-        if not available_cameras:
-            print("사용 가능한 카메라가 없습니다.")
-            return None
-        
-        camera_index = available_cameras[0]
-        print(f"카메라 {camera_index}를 V4L2로 사용합니다.")
-        cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
-        
-        # V4L2 설정
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        cap.set(cv2.CAP_PROP_FPS, 30)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            if ret:
+                actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                actual_fps = cap.get(cv2.CAP_PROP_FPS)
+                
+                print(f"✅ GStreamer 카메라 초기화 성공!")
+                print(f"   설정: {actual_width}x{actual_height} @ {actual_fps}fps")
+                return cap
+            else:
+                print("❌ GStreamer 카메라 열기 성공했지만 프레임 읽기 실패")
+        else:
+            print("❌ GStreamer 카메라 열기 실패")
+    except Exception as e:
+        print(f"GStreamer 에러: {e}")
     
-    if not cap.isOpened():
-        print("카메라를 열 수 없습니다.")
-        return None
+    if 'cap' in locals():
+        cap.release()
     
-    # 실제 설정된 값 확인
-    actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    actual_fps = cap.get(cv2.CAP_PROP_FPS)
+    # 방법 2: V4L2 백엔드 사용
+    print("GStreamer 실패, V4L2 백엔드 시도...")
+    try:
+        cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            cap.set(cv2.CAP_PROP_FPS, 30)
+            
+            ret, frame = cap.read()
+            if ret:
+                actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                actual_fps = cap.get(cv2.CAP_PROP_FPS)
+                
+                print(f"✅ V4L2 카메라 초기화 성공!")
+                print(f"   설정: {actual_width}x{actual_height} @ {actual_fps}fps")
+                return cap
+            else:
+                print("❌ V4L2 카메라 열기 성공했지만 프레임 읽기 실패")
+        else:
+            print("❌ V4L2 카메라 열기 실패")
+    except Exception as e:
+        print(f"V4L2 에러: {e}")
     
-    print(f"카메라 설정: {actual_width}x{actual_height} @ {actual_fps}fps")
+    if 'cap' in locals():
+        cap.release()
     
-    return cap
+    # 방법 3: 기본 백엔드 사용
+    print("V4L2 실패, 기본 백엔드 시도...")
+    try:
+        cap = cv2.VideoCapture(0)
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            cap.set(cv2.CAP_PROP_FPS, 30)
+            
+            ret, frame = cap.read()
+            if ret:
+                actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                actual_fps = cap.get(cv2.CAP_PROP_FPS)
+                
+                print(f"✅ 기본 백엔드 카메라 초기화 성공!")
+                print(f"   설정: {actual_width}x{actual_height} @ {actual_fps}fps")
+                return cap
+            else:
+                print("❌ 기본 백엔드 카메라 열기 성공했지만 프레임 읽기 실패")
+        else:
+            print("❌ 기본 백엔드 카메라 열기 실패")
+    except Exception as e:
+        print(f"기본 백엔드 에러: {e}")
+    
+    if 'cap' in locals():
+        cap.release()
+    
+    print("❌ 모든 카메라 초기화 방법 실패")
+    return None
 
 def main():
     """실시간 카메라를 통한 스쿼트 분석 메인 함수 (젯슨 최적화)"""
