@@ -167,35 +167,52 @@ def initialize_camera():
     """젯슨 환경에서 카메라를 초기화하는 함수"""
     print("카메라 초기화 중...")
     
-    # 사용 가능한 카메라 장치 확인
-    available_cameras = []
-    for i in range(10):  # 0-9까지 테스트
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            ret, frame = cap.read()
-            if ret:
-                available_cameras.append(i)
-                print(f"카메라 {i} 사용 가능")
-            cap.release()
+    # 젯슨 오린 나노용 GStreamer 파이프라인
+    gst_str = (
+        "nvarguscamerasrc ! "
+        "video/x-raw(memory:NVMM), width=1280, height=720, format=NV12, framerate=30/1 ! "
+        "nvvidconv flip-method=0 ! "
+        "video/x-raw, format=BGRx ! "
+        "videoconvert ! "
+        "video/x-raw, format=BGR ! "
+        "appsink"
+    )
     
-    if not available_cameras:
-        print("사용 가능한 카메라가 없습니다.")
-        return None
+    print("GStreamer 파이프라인 사용 중...")
+    print(f"파이프라인: {gst_str}")
     
-    # 첫 번째 사용 가능한 카메라 사용
-    camera_index = available_cameras[0]
-    print(f"카메라 {camera_index}를 사용합니다.")
-    
-    # 카메라 초기화 (V4L2 백엔드 명시)
-    cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
-    
-    # 젯슨 최적화 설정
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)  # 젯슨에서는 낮은 해상도 권장
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cap.set(cv2.CAP_PROP_FPS, 30)
+    # GStreamer로 카메라 초기화
+    cap = cv2.VideoCapture(gst_str, cv2.CAP_GSTREAMER)
     
     if not cap.isOpened():
-        print(f"카메라 {camera_index}를 열 수 없습니다.")
+        print("GStreamer로 카메라를 열 수 없습니다. V4L2로 시도합니다...")
+        
+        # GStreamer 실패 시 V4L2로 폴백
+        available_cameras = []
+        for i in range(10):
+            cap_v4l2 = cv2.VideoCapture(i, cv2.CAP_V4L2)
+            if cap_v4l2.isOpened():
+                ret, frame = cap_v4l2.read()
+                if ret:
+                    available_cameras.append(i)
+                    print(f"카메라 {i} 사용 가능")
+                cap_v4l2.release()
+        
+        if not available_cameras:
+            print("사용 가능한 카메라가 없습니다.")
+            return None
+        
+        camera_index = available_cameras[0]
+        print(f"카메라 {camera_index}를 V4L2로 사용합니다.")
+        cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
+        
+        # V4L2 설정
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+    
+    if not cap.isOpened():
+        print("카메라를 열 수 없습니다.")
         return None
     
     # 실제 설정된 값 확인
