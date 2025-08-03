@@ -26,28 +26,34 @@ def calculate_angle(a: list, b: list, c: list) -> float:
     return angle
 
 def gstreamer_pipeline(
-    capture_width=1280,
-    capture_height=720,
-    display_width=1280,
-    display_height=720,
+    sensor_id=0,
+    capture_width=1920,
+    capture_height=1080,
+    display_width=960,
+    display_height=540,
     framerate=30,
     flip_method=0,
 ):
     """
     GStreamer 파이프라인 생성
-    JetsonHacksNano/CSI-Camera의 simple_camera.py에서 가져온 함수
+    JetsonHacksNano/CSI-Camera의 원본 방식 사용
     """
     return (
-        "nvarguscamerasrc ! "
-        "video/x-raw(memory:NVMM), "
-        f"width=(int){capture_width}, height=(int){capture_height}, "
-        f"format=(string)NV12, framerate=(fraction){framerate}/1 ! "
-        f"nvvidconv flip-method={flip_method} ! "
-        "video/x-raw, "
-        f"width=(int){display_width}, height=(int){display_height}, "
-        "format=(string)BGRx ! "
+        "nvarguscamerasrc sensor-id=%d ! "
+        "video/x-raw(memory:NVMM), width=(int)%d, height=(int)%d, framerate=(fraction)%d/1 ! "
+        "nvvidconv flip-method=%d ! "
+        "video/x-raw, width=(int)%d, height=(int)%d, format=(string)BGRx ! "
         "videoconvert ! "
         "video/x-raw, format=(string)BGR ! appsink"
+        % (
+            sensor_id,
+            capture_width,
+            capture_height,
+            framerate,
+            flip_method,
+            display_width,
+            display_height,
+        )
     )
 
 class ComprehensiveSquatGrader:
@@ -195,10 +201,11 @@ def initialize_camera():
     # 방법 1: GStreamer 파이프라인 사용 (JetsonHacksNano 방식)
     try:
         gst_pipeline = gstreamer_pipeline(
-            capture_width=1280,
-            capture_height=720,
-            display_width=1280,
-            display_height=720,
+            sensor_id=0,
+            capture_width=1920,
+            capture_height=1080,
+            display_width=960,
+            display_height=540,
             framerate=30,
             flip_method=0
         )
@@ -444,9 +451,17 @@ def main():
                                 mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2))               
         
         out.write(image)
-        cv2.imshow('Real-time Squat Analysis (Jetson)', image)
-
-        if cv2.waitKey(10) & 0xFF == ord('q'): 
+        
+        # GTK+ 환경을 고려한 윈도우 처리
+        window_title = 'Real-time Squat Analysis (Jetson)'
+        if cv2.getWindowProperty(window_title, cv2.WND_PROP_AUTOSIZE) >= 0:
+            cv2.imshow(window_title, image)
+        else:
+            break
+        
+        # ESC 키 또는 'q' 키로 종료
+        keyCode = cv2.waitKey(10) & 0xFF
+        if keyCode == 27 or keyCode == ord('q'): 
             break
 
     # 마지막 스쿼트가 완료되지 않았다면 처리
