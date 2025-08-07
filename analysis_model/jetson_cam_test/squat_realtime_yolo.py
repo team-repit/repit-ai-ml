@@ -44,8 +44,8 @@ def initialize_yolo_pose():
     print(f"🔍 환경 감지: {tensorrt_reason}")
     
     # TensorRT 엔진 파일 우선 시도
-    engine_path = 'yolov8n-pose.engine'
-    pt_path = 'yolov8n-pose.pt'
+    engine_path = 'yolo11n-pose.engine'
+    pt_path = 'yolo11n-pose.pt'
     
     try:
         # 1. TensorRT 엔진이 이미 있으면 로드
