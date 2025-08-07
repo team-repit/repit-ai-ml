@@ -376,6 +376,207 @@ def save_report(report_path: str, total_reps: int, results: List[Dict]):
 
     print(f"리포트가 '{report_path}'에 저장되었습니다.")
 
+def gstreamer_pipeline(
+    sensor_id=0,
+    capture_width=1280,
+    capture_height=720,
+    display_width=1280,
+    display_height=720,
+    framerate=30,
+    flip_method=0,
+):
+    """
+    Jetson용 GStreamer 파이프라인 생성 (CSI 카메라용)
+    """
+    return (
+        f"nvarguscamerasrc sensor-id={sensor_id} ! "
+        "video/x-raw(memory:NVMM), "
+        f"width=(int){capture_width}, height=(int){capture_height}, "
+        f"format=(string)NV12, framerate=(fraction){framerate}/1 ! "
+        f"nvvidconv flip-method={flip_method} ! "
+        "video/x-raw, "
+        f"width=(int){display_width}, height=(int){display_height}, "
+        "format=(string)BGRx ! "
+        "videoconvert ! "
+        "video/x-raw, format=(string)BGR ! appsink"
+    )
+
+def check_opencv_gstreamer():
+    """OpenCV의 GStreamer 지원 여부 확인"""
+    try:
+        build_info = cv2.getBuildInformation()
+        return "GStreamer:                   YES" in build_info
+    except:
+        return False
+
+def initialize_jetson_camera():
+    """Jetson 환경에서 카메라 초기화 (CSI + USB 지원)"""
+    print("🔍 Jetson 카메라 환경 감지 중...")
+    
+    # OpenCV GStreamer 지원 확인
+    gstreamer_supported = check_opencv_gstreamer()
+    print(f"OpenCV GStreamer 지원: {'✅ YES' if gstreamer_supported else '❌ NO'}")
+    
+    # 1. CSI 카메라 시도 (GStreamer 지원 시)
+    if gstreamer_supported:
+        print("🎥 CSI 카메라 시도 중...")
+        for sensor_id in range(2):  # 0, 1번 센서 시도
+            try:
+                pipeline = gstreamer_pipeline(sensor_id=sensor_id)
+                print(f"   센서 {sensor_id}: {pipeline[:80]}...")
+                cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+                
+                if cap.isOpened():
+                    ret, frame = cap.read()
+                    if ret and frame is not None:
+                        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        print(f"✅ CSI 카메라 {sensor_id} 성공: {width}x{height}")
+                        return cap, f"CSI-{sensor_id}"
+                    else:
+                        print(f"❌ CSI 카메라 {sensor_id}: 프레임 읽기 실패")
+                        cap.release()
+                else:
+                    print(f"❌ CSI 카메라 {sensor_id}: 열기 실패")
+                    cap.release()
+            except Exception as e:
+                print(f"❌ CSI 카메라 {sensor_id} 오류: {e}")
+    else:
+        print("⚠️ GStreamer 미지원으로 CSI 카메라 건너뜀")
+    
+    # 2. USB 카메라 시도 (V4L2 백엔드)
+    print("🔌 USB 카메라 시도 중...")
+    available_usb_cameras = []
+    
+    for camera_index in range(4):
+        try:
+            # V4L2 백엔드로 시도
+            cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
+            if cap.isOpened():
+                ret, frame = cap.read()
+                if ret and frame is not None:
+                    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    print(f"✅ USB 카메라 {camera_index}: {width}x{height}")
+                    available_usb_cameras.append({
+                        'index': camera_index,
+                        'cap': cap,
+                        'width': width,
+                        'height': height,
+                        'score': width * height
+                    })
+                else:
+                    print(f"❌ USB 카메라 {camera_index}: 프레임 읽기 실패")
+                    cap.release()
+            else:
+                print(f"❌ USB 카메라 {camera_index}: 열기 실패")
+                if cap.isOpened():
+                    cap.release()
+        except Exception as e:
+            print(f"❌ USB 카메라 {camera_index} 오류: {e}")
+    
+    # USB 카메라 중 최적 선택
+    if available_usb_cameras:
+        best_camera = max(available_usb_cameras, key=lambda x: x['score'])
+        
+        # 다른 카메라들 해제
+        for cam_info in available_usb_cameras:
+            if cam_info['index'] != best_camera['index']:
+                cam_info['cap'].release()
+        
+        cap = best_camera['cap']
+        # 카메라 설정 최적화
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+        
+        print(f"🎯 USB 카메라 선택: 인덱스 {best_camera['index']}")
+        return cap, f"USB-{best_camera['index']}"
+    
+    # 3. 일반 OpenCV 방식 (백업)
+    print("🔄 일반 OpenCV 방식 시도 중...")
+    for camera_index in range(4):
+        try:
+            cap = cv2.VideoCapture(camera_index)
+            if cap.isOpened():
+                ret, frame = cap.read()
+                if ret and frame is not None:
+                    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    print(f"✅ 일반 카메라 {camera_index}: {width}x{height}")
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                    return cap, f"DEFAULT-{camera_index}"
+                else:
+                    cap.release()
+            else:
+                if cap.isOpened():
+                    cap.release()
+        except Exception as e:
+            print(f"❌ 일반 카메라 {camera_index} 오류: {e}")
+    
+    return None, None
+
+def initialize_camera_cross_platform():
+    """크로스 플랫폼 카메라 초기화"""
+    import platform
+    
+    # 플랫폼 감지
+    platform_info = platform.platform().lower()
+    is_jetson = 'tegra' in platform_info or 'jetson' in platform_info
+    
+    print(f"🖥️ 플랫폼: {platform.platform()}")
+    print(f"🤖 Jetson 환경: {'YES' if is_jetson else 'NO'}")
+    
+    if is_jetson:
+        # Jetson 환경: CSI + USB 카메라 지원
+        return initialize_jetson_camera()
+    else:
+        # 일반 환경: 기존 로직 사용
+        print("💻 일반 환경에서 카메라 초기화...")
+        available_cameras = []
+        
+        for camera_index in range(4):
+            print(f"카메라 인덱스 {camera_index} 시도 중...")
+            test_cap = cv2.VideoCapture(camera_index)
+            
+            if test_cap.isOpened():
+                ret, frame = test_cap.read()
+                if ret and frame is not None:
+                    width = int(test_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    height = int(test_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    print(f"✅ 카메라 인덱스 {camera_index}: {width}x{height}")
+                    
+                    available_cameras.append({
+                        'index': camera_index,
+                        'cap': test_cap,
+                        'width': width,
+                        'height': height,
+                        'score': width * height
+                    })
+                else:
+                    print(f"❌ 카메라 인덱스 {camera_index}: 프레임 읽기 실패")
+                    test_cap.release()
+            else:
+                print(f"❌ 카메라 인덱스 {camera_index}: 열기 실패")
+        
+        if available_cameras:
+            best_camera = max(available_cameras, key=lambda x: x['score'])
+            
+            # 다른 카메라들 해제
+            for cam_info in available_cameras:
+                if cam_info['index'] != best_camera['index']:
+                    cam_info['cap'].release()
+            
+            cap = best_camera['cap']
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            
+            print(f"🎯 선택된 카메라: 인덱스 {best_camera['index']} ({best_camera['width']}x{best_camera['height']})")
+            return cap, f"PC-{best_camera['index']}"
+        
+        return None, None
+
 def main():
     """실시간 카메라를 통한 스쿼트 분석 메인 함수 (YOLO 버전)"""
     
@@ -385,62 +586,26 @@ def main():
         print("YOLO 모델을 로드할 수 없습니다. 프로그램을 종료합니다.")
         return
     
-    # 카메라 초기화 (여러 인덱스 시도)
-    cap = None
-    camera_found = False
+    # 크로스 플랫폼 카메라 초기화
+    cap, camera_type = initialize_camera_cross_platform()
     
-    print("사용 가능한 카메라를 찾는 중...")
-    available_cameras = []
-    
-    # 카메라 인덱스 0~3까지 시도하여 사용 가능한 카메라 목록 작성
-    for camera_index in range(4):
-        print(f"카메라 인덱스 {camera_index} 시도 중...")
-        test_cap = cv2.VideoCapture(camera_index)
-        
-        if test_cap.isOpened():
-            # 테스트 프레임 읽기
-            ret, frame = test_cap.read()
-            if ret and frame is not None:
-                # 카메라 해상도 확인 (MacBook 내장 카메라는 보통 높은 해상도)
-                width = int(test_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(test_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                print(f"✅ 카메라 인덱스 {camera_index}: {width}x{height}")
-                
-                available_cameras.append({
-                    'index': camera_index,
-                    'cap': test_cap,
-                    'width': width,
-                    'height': height,
-                    'score': width * height  # 해상도가 높을수록 높은 점수
-                })
-            else:
-                print(f"❌ 카메라 인덱스 {camera_index}: 프레임 읽기 실패")
-                test_cap.release()
-        else:
-            print(f"❌ 카메라 인덱스 {camera_index}: 열기 실패")
-    
-    if available_cameras:
-        # 해상도가 가장 높은 카메라 선택 (MacBook 내장 카메라 우선)
-        best_camera = max(available_cameras, key=lambda x: x['score'])
-        cap = best_camera['cap']
-        camera_found = True
-        
-        # 다른 카메라들 해제
-        for cam_info in available_cameras:
-            if cam_info['index'] != best_camera['index']:
-                cam_info['cap'].release()
-        
-        print(f"🎯 선택된 카메라: 인덱스 {best_camera['index']} ({best_camera['width']}x{best_camera['height']})")
-    else:
-        camera_found = False
-    
-    if not camera_found:
+    if cap is None:
         print("❌ 사용 가능한 카메라를 찾을 수 없습니다.")
-        print("\n해결 방법:")
-        print("1. iPhone 연결 해제")
-        print("2. 다른 카메라 앱 종료")
-        print("3. 카메라 권한 확인")
+        print("\n🔧 해결 방법:")
+        if check_opencv_gstreamer():
+            print("1. CSI 카메라 연결 확인")
+            print("2. USB 카메라 연결 확인")
+        else:
+            print("1. OpenCV GStreamer 지원 확인: pip install opencv-python-headless 대신")
+            print("   Jetson에서는 JetPack과 함께 제공되는 OpenCV 사용 권장")
+            print("2. 또는 다음 명령으로 GStreamer 지원 OpenCV 설치:")
+            print("   sudo apt update")
+            print("   sudo apt install python3-opencv")
+        print("3. USB 카메라 /dev/video* 장치 확인: ls /dev/video*")
+        print("4. 카메라 권한 확인: sudo usermod -a -G video $USER")
         return
+    
+    print(f"🎥 카메라 초기화 완료: {camera_type}")
     
     # 카메라 설정
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
@@ -481,6 +646,128 @@ def main():
     print("YOLO 기반 스쿼트 분석을 시작합니다. 30초간 카메라가 켜집니다.")
     print("스쿼트 동작을 시작하세요!")
     print("종료하려면 'q'를 누르세요.")
+    
+    # 모델 정보 표시
+    model_info = str(model.model).lower()
+    if 'tensorrt' in model_info or 'engine' in model_info:
+        print("🚀 TensorRT 가속 모드로 실행 중 - 최적화된 성능!")
+    else:
+        print("📦 PyTorch 모드로 실행 중")
+    
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret: 
+            print("프레임을 읽을 수 없습니다.")
+            break
+        
+        # 현재 시간 계산
+        current_time = time.time()
+        elapsed_time = current_time - start_time
+        remaining_time = max(0, recording_duration - elapsed_time)
+        
+        # 30초 경과 시 종료
+        if elapsed_time >= recording_duration:
+            break
+        
+        # YOLO 처리
+        results = model(frame)
+        
+        # 스켈레톤 그리기
+        frame = draw_yolo_pose(frame, results)
+        
+        try:
+            # YOLO 결과를 landmarks 형식으로 변환
+            lm_data = yolo_to_landmarks(results, frame.shape)
+            
+            if lm_data and all(key in lm_data for key in ['left_shoulder', 'left_hip', 'left_knee', 'left_ankle']):
+                h, w, _ = frame.shape
+                
+                angles = {}
+                # 왼쪽/오른쪽 중 더 잘 보이는 쪽 선택
+                use_left_side = True  # YOLO에서는 단순화
+                
+                if use_left_side and all(key in lm_data for key in ['left_shoulder', 'left_hip', 'left_knee', 'left_ankle', 'left_foot_index']):
+                    angles['hip'] = calculate_angle(lm_data['left_shoulder'], lm_data['left_hip'], lm_data['left_knee'])
+                    angles['knee'] = calculate_angle(lm_data['left_hip'], lm_data['left_knee'], lm_data['left_ankle'])
+                    angles['ankle'] = calculate_angle(lm_data['left_knee'], lm_data['left_ankle'], lm_data['left_foot_index'])
+                    angles['torso'] = calculate_angle(lm_data['left_hip'], lm_data['left_shoulder'], [lm_data['left_shoulder'][0], lm_data['left_shoulder'][1] - 1])
+                elif all(key in lm_data for key in ['right_shoulder', 'right_hip', 'right_knee', 'right_ankle', 'right_foot_index']):
+                    angles['hip'] = calculate_angle(lm_data['right_shoulder'], lm_data['right_hip'], lm_data['right_knee'])
+                    angles['knee'] = calculate_angle(lm_data['right_hip'], lm_data['right_knee'], lm_data['right_ankle'])
+                    angles['ankle'] = calculate_angle(lm_data['right_knee'], lm_data['right_ankle'], lm_data['right_foot_index'])
+                    angles['torso'] = calculate_angle(lm_data['right_hip'], lm_data['right_shoulder'], [lm_data['right_shoulder'][0], lm_data['right_shoulder'][1] - 1])
+                
+                if 'knee' in angles:
+                    knee_angle = angles['knee']
+                    
+                    if knee_angle > 160:
+                        if stage == 'down': 
+                            final_grade = grader.get_grade_from_errors(list(current_rep_errors))
+                            all_rep_results.append({'rep': counter, 'grade': final_grade, 'errors': list(current_rep_errors)})
+                            last_rep_grade = final_grade
+                            current_rep_errors.clear()
+                        stage = "up"
+
+                    if knee_angle < 100 and stage == 'up':
+                        stage = "down"
+                        counter += 1
+                        rep_start_hip_y = (lm_data['left_hip'][1] + lm_data['right_hip'][1]) / 2
+
+                    current_phase = ""
+                    if stage == "up": current_phase = "ASCEND" if knee_angle < 170 else "READY"
+                    elif stage == "down": current_phase = "BOTTOM" if knee_angle < 90 else "DESCEND"
+                    
+                    if stage == "down" or stage == "up":
+                        errors_in_frame = grader.evaluate_errors(lm_data, angles, current_phase, rep_start_hip_y)
+                        current_rep_errors.update(errors_in_frame)
+
+        except Exception as e:
+            pass
+        
+        # ------------------ 화면 표시 정보 (MediaPipe와 동일) ------------------
+        # 상단 정보 박스
+        cv2.rectangle(frame, (0,0), (frame_width, 120), (245,117,16), -1)
+        
+        # 타이머 표시
+        cv2.putText(frame, f'TIME: {remaining_time:.1f}s', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
+        
+        # REPS
+        cv2.putText(frame, 'REPS', (int(frame_width * 0.3), 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
+        cv2.putText(frame, str(counter), (int(frame_width * 0.3), 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
+        
+        # PHASE
+        cv2.putText(frame, 'PHASE', (int(frame_width * 0.5), 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
+        cv2.putText(frame, current_phase, (int(frame_width * 0.5), 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
+
+        # LAST REP GRADE
+        cv2.putText(frame, 'GRADE', (int(frame_width * 0.7), 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
+        cv2.putText(frame, last_rep_grade, (int(frame_width * 0.7), 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
+        
+        # 하단 안내 메시지 (카메라 타입 표시)
+        cv2.rectangle(frame, (0, frame_height-50), (frame_width, frame_height), (0,0,0), -1)
+        cv2.putText(frame, f'Press Q to quit | {camera_type} | YOLO Pose', (10, frame_height-20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2, cv2.LINE_AA)
+        # ----------------------------------------------------
+                   
+        out.write(frame)
+        cv2.imshow('Real-time Squat Analysis (YOLO)', frame)
+
+        if cv2.waitKey(10) & 0xFF == ord('q'): 
+            break
+
+    # 마지막 스쿼트가 완료되지 않았다면 처리
+    if stage == 'down' and current_rep_errors:
+        final_grade = grader.get_grade_from_errors(list(current_rep_errors))
+        all_rep_results.append({'rep': counter, 'grade': final_grade, 'errors': list(current_rep_errors)})
+
+    cap.release()
+    out.release()
+    cv2.destroyAllWindows()
+
+    # 결과 저장
+    save_report(output_report_path, counter, all_rep_results)
+    print(f"분석 영상이 '{output_video_path}'에 저장되었습니다.")
+    print(f"분석 리포트가 '{output_report_path}'에 저장되었습니다.")
+    print(f"총 {counter}회의 스쿼트를 분석했습니다.")
     
     # 모델 정보 표시
     model_info = str(model.model).lower()
