@@ -179,7 +179,7 @@ def main():
     """실시간 카메라를 통한 스쿼트 분석 메인 함수"""
     
     # 카메라 초기화
-    cap = cv2.VideoCapture(1)  # 기본 카메라 (보통 내장 웹캠)
+    cap = cv2.VideoCapture(0)  # 기본 카메라 (보통 내장 웹캠)
     
     if not cap.isOpened():
         print("카메라를 열 수 없습니다.")
