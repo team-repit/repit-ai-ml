@@ -120,38 +120,26 @@ def save_report(report_path: str, total_reps: int, results: List[Dict]):
     grade_counts = GradeCounter(grades)
 
     with open(report_path, 'w', encoding='utf-8') as f:
-        f.write("실시간 스쿼트 자세 분석 리포트 (MediaPipe)\n")
+        f.write("실시간 스쿼트 자세 분석 리포트\n")
         f.write("="*30 + "\n")
         f.write(f"총 스쿼트 횟수: {total_reps}회\n\n")
         
-        # 스쿼트가 인식되지 않은 경우 특별한 피드백 제공
-        if total_reps == 0:
-            f.write("⚠️  스쿼트 동작이 인식되지 않았습니다.\n\n")
-            f.write("가능한 원인과 해결 방법:\n")
-            f.write("1. 카메라 거리 조정: 전신이 화면에 들어오도록 카메라와의 거리를 조정해주세요.\n")
-            f.write("2. 조명 확인: 충분한 조명 환경에서 촬영해주세요.\n")
-            f.write("3. 동작 크기: 무릎 각도가 100도 이하로 충분히 깊게 앉아주세요.\n")
-            f.write("4. 측면 촬영: 정면보다는 측면에서 촬영하면 더 정확한 인식이 가능합니다.\n")
-            f.write("5. 동작 속도: 너무 빠르지 않게 천천히 스쿼트를 수행해주세요.\n")
-            f.write("6. 자세 확인: 발을 어깨 너비로 벌리고 올바른 스쿼트 자세를 유지해주세요.\n\n")
-            f.write("💡 팁: 다음 번에는 위의 사항들을 확인한 후 다시 시도해보세요!\n\n")
-        else:
-            f.write("등급별 요약:\n")
-            for grade in ["A", "B", "C", "D", "F"]:
-                count = grade_counts.get(grade, 0)
-                f.write(f"- 등급 {grade}: {count}회\n")
-            
-            f.write("\n" + "="*30 + "\n")
-            f.write("반복별 상세 결과:\n")
-            for res in results:
-                f.write(f"\n--- {res['rep']}회차: 등급 {res['grade']} ---\n")
-                if res['errors']:
-                    f.write("  [수행하지 못한 기준]\n")
-                    for error_key in sorted(res['errors']): # 오류를 가나다 순으로 정렬하여 출력
-                        error_description = ERROR_CRITERIA_MAP.get(error_key, "알 수 없는 오류")
-                        f.write(f"  - {error_description}\n")
-                else:
-                    f.write("  - 모든 기준을 만족했습니다.\n")
+        f.write("등급별 요약:\n")
+        for grade in ["A", "B", "C", "D", "F"]:
+            count = grade_counts.get(grade, 0)
+            f.write(f"- 등급 {grade}: {count}회\n")
+        
+        f.write("\n" + "="*30 + "\n")
+        f.write("반복별 상세 결과:\n")
+        for res in results:
+            f.write(f"\n--- {res['rep']}회차: 등급 {res['grade']} ---\n")
+            if res['errors']:
+                f.write("  [수행하지 못한 기준]\n")
+                for error_key in sorted(res['errors']): # 오류를 가나다 순으로 정렬하여 출력
+                    error_description = ERROR_CRITERIA_MAP.get(error_key, "알 수 없는 오류")
+                    f.write(f"  - {error_description}\n")
+            else:
+                f.write("  - 모든 기준을 만족했습니다.\n")
 
         # --- 전체 평가 기준 추가 ---
         f.write("\n\n" + "="*40 + "\n")
@@ -179,7 +167,7 @@ def main():
     """실시간 카메라를 통한 스쿼트 분석 메인 함수"""
     
     # 카메라 초기화
-    cap = cv2.VideoCapture(1)  # 기본 카메라 (보통 내장 웹캠)
+    cap = cv2.VideoCapture(0)  # 기본 카메라 (보통 내장 웹캠)
     
     if not cap.isOpened():
         print("카메라를 열 수 없습니다.")
@@ -195,15 +183,10 @@ def main():
     fps = 30.0
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     
-    # output 디렉토리 생성 (없으면 생성)
-    output_dir = "output"
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    # 타임스탬프를 포함한 파일명 생성 (output 디렉토리 안에 저장)
+    # 타임스탬프를 포함한 파일명 생성
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    output_video_path = os.path.join(output_dir, f"squat_realtime_analysis_{timestamp}.mp4")
-    output_report_path = os.path.join(output_dir, f"squat_realtime_report_{timestamp}.txt")
+    output_video_path = f"squat_realtime_analysis_{timestamp}.mp4"
+    output_report_path = f"squat_realtime_report_{timestamp}.txt"
     
     out = cv2.VideoWriter(output_video_path, fourcc, fps, (frame_width, frame_height))
     
