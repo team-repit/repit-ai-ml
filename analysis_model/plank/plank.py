@@ -140,7 +140,7 @@ def save_report(report_path: str, hold_results: List[Dict]):
 
 
 # --- 메인 실행 로직 ---
-cap = cv2.VideoCapture(1)
+cap = cv2.VideoCapture(0)
 
 # --- 사용자에게 분석 시간 입력받기 ---
 try:
