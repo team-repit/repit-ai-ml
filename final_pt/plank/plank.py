@@ -273,7 +273,7 @@ cap.release()
 pose.close()
 
 # ─────────────────────────────────────────────
-# 평가 점수 계산 및 출력 (여기에 넣으세요!)
+# 평가 점수 계산 및 출력
 # ─────────────────────────────────────────────
 if frame_scores:
     avg_scores, grades = calculate_final_score(frame_scores)
