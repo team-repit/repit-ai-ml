@@ -7,9 +7,22 @@ from typing import List, Dict, Tuple
 from collections import Counter as GradeCounter
 
 # MediaPipe Pose 모델 초기화
+print("🔍 MediaPipe 초기화 중...")
+import time
+start_time = time.time()
+
 mp_pose = mp.solutions.pose
-pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+pose = mp_pose.Pose(
+    min_detection_confidence=0.5, 
+    min_tracking_confidence=0.5,
+    model_complexity=1,  # 0:Lite, 1:Full, 2:Heavy (기본값: 1)
+    enable_segmentation=False,  # 세그멘테이션 비활성화로 속도 향상
+    smooth_landmarks=True
+)
 mp_drawing = mp.solutions.drawing_utils
+
+load_time = time.time() - start_time
+print(f"✅ MediaPipe 로드 완료! (소요시간: {load_time:.2f}초)")
 
 def calculate_angle(a: list, b: list, c: list) -> float:
     """세 점 사이의 각도를 계산하는 함수 (결과값: 0-180)"""
