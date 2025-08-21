@@ -65,7 +65,21 @@ pip install \
 # TTS 도구 설치
 print_status "TTS 도구 설치 중..."
 
-# Festival TTS
+# Google TTS (1순위, 한국어 품질 최고)
+print_status "Google TTS (gTTS) 설치 확인 중..."
+if pip show gtts &> /dev/null; then
+    print_success "Google TTS (gTTS) 이미 설치됨"
+else
+    print_status "Google TTS (gTTS) 설치 중..."
+    pip install gtts pydub
+    if [ $? -eq 0 ]; then
+        print_success "Google TTS (gTTS) 설치 완료"
+    else
+        print_warning "Google TTS (gTTS) 설치 실패"
+    fi
+fi
+
+# Festival TTS (2순위, 한국어 품질 양호)
 if ! command -v festival &> /dev/null; then
     print_status "Festival TTS 설치 중..."
     sudo apt-get install -y festival festvox-kallpc16k
@@ -92,6 +106,15 @@ else
     print_success "Flite TTS 이미 설치됨"
 fi
 
+# espeak TTS (최종 백업)
+if ! command -v espeak &> /dev/null; then
+    print_status "espeak TTS 설치 중..."
+    sudo apt-get install -y espeak
+    print_success "espeak TTS 설치 완료"
+else
+    print_success "espeak TTS 이미 설치됨"
+fi
+
 # MP3 재생 도구
 if ! command -v mpg123 &> /dev/null; then
     print_status "MP3 재생 도구 설치 중..."
@@ -99,42 +122,6 @@ if ! command -v mpg123 &> /dev/null; then
     print_success "MP3 재생 도구 설치 완료"
 else
     print_success "MP3 재생 도구 이미 설치됨"
-fi
-
-# NVIDIA Riva TTS 설치 (선택사항)
-print_status "NVIDIA Riva TTS 설치 중..."
-if pip show nvidia-riva-client &> /dev/null; then
-    print_success "Riva 클라이언트 이미 설치됨"
-else
-    print_status "Riva 클라이언트 설치 중..."
-    pip install nvidia-riva-client
-    if [ $? -eq 0 ]; then
-        print_success "Riva 클라이언트 설치 완료"
-    else
-        print_warning "Riva 클라이언트 설치 실패 (선택사항)"
-    fi
-fi
-
-# Docker 설치 (Riva 서버용)
-print_status "Docker 설치 중..."
-if ! command -v docker &> /dev/null; then
-    sudo apt-get install -y docker.io
-    sudo usermod -aG docker $USER
-    sudo systemctl start docker
-    sudo systemctl enable docker
-    print_success "Docker 설치 완료"
-else
-    print_success "Docker 이미 설치됨"
-fi
-
-# NVIDIA Container Toolkit 설치
-print_status "NVIDIA Container Toolkit 설치 중..."
-if ! command -v nvidia-container-toolkit &> /dev/null; then
-    sudo apt-get install -y nvidia-container-toolkit
-    sudo systemctl restart docker
-    print_success "NVIDIA Container Toolkit 설치 완료"
-else
-    print_success "NVIDIA Container Toolkit 이미 설치됨"
 fi
 
 # 테스트 실행
@@ -160,14 +147,17 @@ echo "사용 방법:"
 echo "1. 가상환경 활성화: source jetson_tts_env/bin/activate"
 echo "2. 스쿼트 분석 실행: python squat_real_tts.py"
 echo ""
-echo "Riva TTS 사용 시:"
-echo "1. Riva 서버 실행:"
-echo "   docker run --gpus all -p 8000:8000 nvcr.io/nvidia/riva/riva-speech:23.12-riva-client"
-echo "2. 새 터미널에서 스쿼트 분석 실행"
+echo "TTS 우선순위:"
+echo "1. Google TTS (gTTS) - 한국어 품질 최고"
+echo "2. Festival TTS - 한국어 품질 양호"
+echo "3. Pico TTS - 가벼움"
+echo "4. Flite TTS - 빠름"
+echo "5. espeak TTS - 최종 백업"
 echo ""
 echo "문제 해결:"
 echo "- 가상환경이 활성화되지 않으면: source jetson_tts_env/bin/activate"
 echo "- 권한 문제 시: sudo chown -R $USER:$USER jetson_tts_env"
+echo "- TTS 문제 시: pip install gtts pydub"
 echo "=========================================="
 
 print_success "젯슨 TTS 시스템 설치가 완료되었습니다!" 
