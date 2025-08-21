@@ -68,10 +68,10 @@ class UniversalTTS:
     def setup_tts(self):
         """플랫폼별 TTS 설정"""
         if self.platform == "Jetson":
-            # 젯슨 전용 TTS 설정 (Riva 우선)
-            self.tts_method = "jetson_riva"
+            # 젯슨 전용 TTS 설정 (espeak 우선, Riva 백업)
+            self.tts_method = "jetson_espeak"
             self.backup_tts = "festival"
-            print("TTS: 젯슨 Riva TTS 우선 사용")
+            print("TTS: 젯슨 espeak TTS 우선 사용 (안정적)")
             print("백업 TTS: Festival TTS")
         elif self.platform == "Darwin":  # macOS
             self.tts_method = "gtts"
@@ -112,8 +112,8 @@ class UniversalTTS:
         """플랫폼별 TTS 사용"""
         try:
             if self.platform == "Jetson":
-                # 젯슨 Riva TTS 우선 시도
-                self._speak_jetson_riva(message, priority)
+                # 젯슨 espeak TTS 우선 시도
+                self._speak_jetson_espeak(message, priority)
             elif self.tts_method == "gtts":
                 # Google TTS 우선 시도
                 self._speak_gtts(message, priority)
@@ -124,6 +124,22 @@ class UniversalTTS:
             print(f"주 TTS 실패: {e}")
             # 플랫폼별 백업 TTS 시도
             self._speak_backup(message)
+    
+    def _speak_jetson_espeak(self, message: str, priority: str):
+        """젯슨 espeak TTS (안정적이고 빠름)"""
+        try:
+            # espeak TTS 시도
+            rate = 150 if priority == "urgent" else 120
+            subprocess.run(['espeak', '-s', str(rate), message], check=True)
+            print("젯슨 espeak TTS 사용됨 (안정적)")
+        except Exception as e:
+            print(f"espeak TTS 실패: {e}")
+            # Riva TTS 시도
+            try:
+                self._speak_jetson_riva(message, priority)
+            except:
+                # 기본 젯슨 TTS로 폴백
+                self._speak_jetson(message, priority)
     
     def _speak_jetson_riva(self, message: str, priority: str):
         """젯슨 Riva TTS (최고 성능)"""
@@ -319,6 +335,8 @@ class UniversalTTS:
                 self._speak_pyttsx3(message, "normal")
             elif self.backup_tts == "festival":
                 self._speak_festival(message, "normal")
+            elif self.backup_tts == "espeak":
+                self._speak_espeak(message, "normal")
             else:
                 self._speak_pyttsx3(message, "normal")
             print(f"백업 TTS ({self.backup_tts}) 사용됨")
@@ -328,22 +346,27 @@ class UniversalTTS:
             print("음성 피드백을 제공할 수 없습니다.")
     
     def _speak_jetson_backup(self, message: str):
-        """젯슨 백업 TTS (Festival, Pico, Flite 순서로 시도)"""
+        """젯슨 백업 TTS (espeak, Festival, Pico, Flite 순서로 시도)"""
         try:
-            # Festival TTS
-            subprocess.run(['festival', '--tts', f'(SayText "{message}")'], check=True)
-            print("젯슨 백업 TTS (Festival) 사용됨")
+            # espeak TTS (가장 안정적)
+            subprocess.run(['espeak', '-s', '120', message], check=True)
+            print("젯슨 백업 TTS (espeak) 사용됨")
         except:
             try:
-                # Pico TTS
-                subprocess.run(['pico2wave', '-w', 'temp_speech.wav', message], check=True)
-                subprocess.run(['aplay', 'temp_speech.wav'], check=True)
-                os.remove('temp_speech.wav')
-                print("젯슨 백업 TTS (Pico) 사용됨")
+                # Festival TTS
+                subprocess.run(['festival', '--tts', f'(SayText "{message}")'], check=True)
+                print("젯슨 백업 TTS (Festival) 사용됨")
             except:
-                # Flite TTS
-                subprocess.run(['flite', '-t', message], check=True)
-                print("젯슨 백업 TTS (Flite) 사용됨")
+                try:
+                    # Pico TTS
+                    subprocess.run(['pico2wave', '-w', 'temp_speech.wav', message], check=True)
+                    subprocess.run(['aplay', 'temp_speech.wav'], check=True)
+                    os.remove('temp_speech.wav')
+                    print("젯슨 백업 TTS (Pico) 사용됨")
+                except:
+                    # Flite TTS
+                    subprocess.run(['flite', '-t', message], check=True)
+                    print("젯슨 백업 TTS (Flite) 사용됨")
     
     def _speak_festival(self, message: str, priority: str):
         """Festival TTS (Linux/젯슨)"""
@@ -448,6 +471,13 @@ class UniversalTTS:
         
         tools_status = {}
         
+        # espeak TTS 확인 (가장 안정적)
+        try:
+            subprocess.run(['espeak', '--version'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            tools_status['espeak TTS'] = "✅ 설치됨 (가장 안정적)"
+        except:
+            tools_status['espeak TTS'] = "❌ 설치 필요"
+        
         # Riva TTS 확인 (최고 성능)
         try:
             import nvidia.riva.client
@@ -495,16 +525,17 @@ class UniversalTTS:
         # 설치 안내
         if any("❌" in status for status in tools_status.values()):
             print("\n📋 젯슨에서 TTS 도구 설치 방법:")
-            print("\n🚀 NVIDIA Riva TTS (최고 성능):")
-            print("pip install nvidia-riva-client")
-            print("docker run --gpus all -p 8000:8000 nvcr.io/nvidia/riva/riva-speech:23.12-riva-client")
-            
-            print("\n🔧 기본 TTS 도구들:")
+            print("\n🔧 기본 TTS 도구들 (권장):")
             print("sudo apt-get update")
+            print("sudo apt-get install espeak")                    # espeak TTS (가장 안정적)
             print("sudo apt-get install festival festvox-kallpc16k")  # Festival TTS
             print("sudo apt-get install pico-utils")                  # Pico TTS
             print("sudo apt-get install flite")                       # Flite TTS
             print("sudo apt-get install mpg123")                      # MP3 재생
+            
+            print("\n🚀 NVIDIA Riva TTS (최고 성능, 선택사항):")
+            print("pip install nvidia-riva-client")
+            print("docker run --gpus all -p 8000:8000 nvcr.io/nvidia/riva/riva-speech:23.12-riva-client")
             
             print("\n📦 Python 패키지:")
             print("pip install gtts pydub numpy")
