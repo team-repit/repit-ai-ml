@@ -51,19 +51,6 @@ sudo apt-get install -y \
     curl \
     wget
 
-# Python 가상환경 생성
-print_status "Python 가상환경 생성 중..."
-if [ ! -d "jetson_tts_env" ]; then
-    python3 -m venv jetson_tts_env
-    print_success "가상환경 생성 완료"
-else
-    print_warning "가상환경이 이미 존재합니다"
-fi
-
-# 가상환경 활성화
-print_status "가상환경 활성화 중..."
-source jetson_tts_env/bin/activate
-
 # pip 업그레이드
 print_status "pip 업그레이드 중..."
 pip install --upgrade pip
@@ -71,9 +58,6 @@ pip install --upgrade pip
 # Python 패키지 설치
 print_status "Python 패키지 설치 중..."
 pip install \
-    opencv-python \
-    mediapipe \
-    numpy \
     gtts \
     pydub \
     wave
