@@ -31,6 +31,10 @@ class UniversalTTS:
         self.platform = self._detect_platform()
         self.setup_tts()
         
+        # 젯슨에서 TTS 도구 설치 안내
+        if self.platform == "Jetson":
+            self._check_jetson_tts_tools()
+        
         self.feedback_thread.start()
         
         # 피드백 메시지 매핑
@@ -48,26 +52,46 @@ class UniversalTTS:
     def _detect_platform(self):
         """플랫폼 감지"""
         import platform
-        return platform.system()
+        system = platform.system()
+        
+        # 젯슨 감지 (ARM64 + Linux)
+        if system == "Linux":
+            try:
+                with open('/proc/cpuinfo', 'r') as f:
+                    cpu_info = f.read()
+                    if 'aarch64' in cpu_info or 'ARM' in cpu_info:
+                        return "Jetson"
+            except:
+                pass
+        return system
     
     def setup_tts(self):
-        """Google TTS 우선 사용 설정"""
-        # Google TTS를 메인으로 사용
-        self.tts_method = "gtts"
-        print("TTS: Google TTS 우선 사용")
-        
-        # 플랫폼별 백업 TTS 설정
-        if self.platform == "Darwin":  # macOS
+        """플랫폼별 TTS 설정"""
+        if self.platform == "Jetson":
+            # 젯슨 전용 TTS 설정 (Riva 우선)
+            self.tts_method = "jetson_riva"
+            self.backup_tts = "festival"
+            print("TTS: 젯슨 Riva TTS 우선 사용")
+            print("백업 TTS: Festival TTS")
+        elif self.platform == "Darwin":  # macOS
+            self.tts_method = "gtts"
             self.backup_tts = "native_say"
+            print("TTS: Google TTS 우선 사용")
             print("백업 TTS: macOS say 명령어")
         elif self.platform == "Windows":
+            self.tts_method = "gtts"
             self.backup_tts = "pyttsx3"
+            print("TTS: Google TTS 우선 사용")
             print("백업 TTS: Windows pyttsx3")
         elif self.platform == "Linux":
-            self.backup_tts = "espeak"
-            print("백업 TTS: Linux espeak")
+            self.tts_method = "gtts"
+            self.backup_tts = "festival"
+            print("TTS: Google TTS 우선 사용")
+            print("백업 TTS: Festival TTS")
         else:
+            self.tts_method = "gtts"
             self.backup_tts = "pyttsx3"
+            print("TTS: Google TTS 우선 사용")
             print("백업 TTS: pyttsx3")
     
     def _feedback_worker(self):
@@ -85,14 +109,180 @@ class UniversalTTS:
                 print(f"TTS 피드백 오류: {e}")
     
     def _speak_feedback(self, message: str, priority: str):
-        """Google TTS 우선, 백업 TTS 사용"""
+        """플랫폼별 TTS 사용"""
         try:
-            # Google TTS 우선 시도
-            self._speak_gtts(message, priority)
+            if self.platform == "Jetson":
+                # 젯슨 Riva TTS 우선 시도
+                self._speak_jetson_riva(message, priority)
+            elif self.tts_method == "gtts":
+                # Google TTS 우선 시도
+                self._speak_gtts(message, priority)
+            else:
+                # 기본 TTS 시도
+                self._speak_backup(message)
         except Exception as e:
-            print(f"Google TTS 실패: {e}")
+            print(f"주 TTS 실패: {e}")
             # 플랫폼별 백업 TTS 시도
             self._speak_backup(message)
+    
+    def _speak_jetson_riva(self, message: str, priority: str):
+        """젯슨 Riva TTS (최고 성능)"""
+        try:
+            # Riva TTS 시도
+            self._speak_riva_tts(message, priority)
+            print("젯슨 Riva TTS 사용됨")
+        except Exception as e:
+            print(f"Riva TTS 실패: {e}")
+            # 기존 젯슨 TTS로 폴백
+            self._speak_jetson(message, priority)
+    
+    def _speak_riva_tts(self, message: str, priority: str):
+        """NVIDIA Riva TTS 사용"""
+        try:
+            # Riva 클라이언트 임포트 시도
+            from nvidia.riva.client import RivaClient
+            
+            # Riva 서버에 연결 (기본 포트 8000)
+            client = RivaClient("localhost:8000")
+            
+            # TTS 설정
+            sample_rate = 22050
+            language_code = "ko-KR"  # 한국어
+            
+            # 우선순위에 따른 음성 속도 조절
+            if priority == "urgent":
+                speed = 1.2  # 빠르게
+            else:
+                speed = 1.0  # 보통 속도
+            
+            # TTS 생성
+            audio = client.tts(
+                text=message,
+                language_code=language_code,
+                sample_rate_hz=sample_rate,
+                voice_name="ljspeech",  # 기본 음성
+                speed=speed
+            )
+            
+            # 오디오 재생
+            self._play_audio_data(audio, sample_rate)
+            
+        except ImportError:
+            print("Riva 클라이언트가 설치되지 않았습니다.")
+            print("설치 방법: pip install nvidia-riva-client")
+            raise Exception("Riva TTS를 사용할 수 없습니다")
+        except Exception as e:
+            print(f"Riva TTS 실행 오류: {e}")
+            raise
+    
+    def _play_audio_data(self, audio_data, sample_rate):
+        """오디오 데이터를 재생"""
+        try:
+            # numpy 배열로 변환
+            import numpy as np
+            audio_np = np.frombuffer(audio_data, dtype=np.int16)
+            
+            # WAV 파일로 저장 후 재생
+            import wave
+            wav_file = "temp_riva_speech.wav"
+            
+            with wave.open(wav_file, 'wb') as wf:
+                wf.setnchannels(1)  # 모노
+                wf.setsampwidth(2)   # 16비트
+                wf.setframerate(sample_rate)
+                wf.writeframes(audio_np.tobytes())
+            
+            # aplay로 재생
+            subprocess.run(['aplay', wav_file], check=True)
+            os.remove(wav_file)
+            
+        except Exception as e:
+            print(f"오디오 재생 오류: {e}")
+            raise
+    
+    def _speak_jetson(self, message: str, priority: str):
+        """젯슨 전용 TTS (Festival 우선, Pico 백업)"""
+        try:
+            # Festival TTS 시도
+            rate = 0.8 if priority == "urgent" else 1.0
+            subprocess.run(['festival', '--tts', f'(SayText "{message}")'], check=True)
+            print("젯슨 TTS (Festival) 사용됨")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print("Festival TTS 실패, Pico TTS 시도")
+            try:
+                # Pico TTS 시도
+                subprocess.run(['pico2wave', '-w', 'temp_speech.wav', message], check=True)
+                subprocess.run(['aplay', 'temp_speech.wav'], check=True)
+                os.remove('temp_speech.wav')
+                print("젯슨 TTS (Pico) 사용됨")
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                print("Pico TTS도 실패, Flite TTS 시도")
+                try:
+                    # Flite TTS 시도
+                    subprocess.run(['flite', '-t', message], check=True)
+                    print("젯슨 TTS (Flite) 사용됨")
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    print("모든 젯슨 TTS 실패")
+                    raise Exception("젯슨 TTS를 사용할 수 없습니다")
+    
+    def _speak_gtts(self, message: str, priority: str):
+        """Google TTS 메인 (우선 사용)"""
+        try:
+            from gtts import gTTS
+            tts = gTTS(text=message, lang='ko')
+            temp_file = "temp_speech.mp3"
+            tts.save(temp_file)
+            
+            # 플랫폼별 오디오 재생
+            if self.platform == "Darwin":  # macOS
+                subprocess.run(['afplay', temp_file], check=True)
+            elif self.platform == "Windows":
+                os.startfile(temp_file)  # Windows 기본 플레이어
+            elif self.platform in ["Linux", "Jetson"]:
+                # Linux/젯슨에서 MP3 재생을 위한 여러 방법 시도
+                self._play_mp3_linux(temp_file)
+            
+            # 임시 파일 삭제
+            os.remove(temp_file)
+            print("Google TTS 사용됨")
+            
+        except ImportError:
+            print("gTTS가 설치되지 않았습니다. 백업 TTS를 사용합니다.")
+            raise
+        except Exception as e:
+            print(f"Google TTS 실패: {e}")
+            raise
+    
+    def _play_mp3_linux(self, mp3_file: str):
+        """Linux/젯슨에서 MP3 파일 재생"""
+        # 여러 MP3 플레이어 중 하나를 찾아서 사용
+        players = [
+            ('mpg123', ['mpg123', mp3_file]),
+            ('ffplay', ['ffplay', '-nodisp', '-autoexit', mp3_file]),
+            ('mpv', ['mpv', '--no-video', mp3_file]),
+            ('cvlc', ['cvlc', '--play-and-exit', mp3_file])
+        ]
+        
+        for player_name, cmd in players:
+            try:
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f"MP3 재생: {player_name} 사용")
+                return
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                continue
+        
+        # MP3 플레이어가 없으면 WAV로 변환 후 재생
+        try:
+            import pydub
+            audio = pydub.AudioSegment.from_mp3(mp3_file)
+            wav_file = mp3_file.replace('.mp3', '.wav')
+            audio.export(wav_file, format="wav")
+            subprocess.run(['aplay', wav_file], check=True)
+            os.remove(wav_file)
+            print("MP3를 WAV로 변환하여 재생")
+        except ImportError:
+            print("pydub가 설치되지 않아 MP3를 WAV로 변환할 수 없습니다")
+            raise Exception("Linux에서 MP3 재생을 위한 도구가 없습니다")
     
     def _speak_macos(self, message: str, priority: str):
         """macOS say 명령어"""
@@ -117,42 +307,18 @@ class UniversalTTS:
         rate = 200 if priority == "urgent" else 150
         subprocess.run(['espeak', '-s', str(rate), message], check=True)
     
-    def _speak_gtts(self, message: str, priority: str):
-        """Google TTS 메인 (우선 사용)"""
-        try:
-            from gtts import gTTS
-            tts = gTTS(text=message, lang='ko')
-            temp_file = "temp_speech.mp3"
-            tts.save(temp_file)
-            
-            # 플랫폼별 오디오 재생
-            if self.platform == "Darwin":  # macOS
-                subprocess.run(['afplay', temp_file], check=True)
-            elif self.platform == "Windows":
-                os.startfile(temp_file)  # Windows 기본 플레이어
-            elif self.platform == "Linux":
-                subprocess.run(['aplay', temp_file], check=True)
-            
-            # 임시 파일 삭제
-            os.remove(temp_file)
-            print("Google TTS 사용됨")
-            
-        except ImportError:
-            print("gTTS가 설치되지 않았습니다. 백업 TTS를 사용합니다.")
-            raise
-        except Exception as e:
-            print(f"Google TTS 실패: {e}")
-            raise
-    
     def _speak_backup(self, message: str):
         """플랫폼별 백업 TTS"""
         try:
-            if self.backup_tts == "native_say":
+            if self.platform == "Jetson":
+                # 젯슨 백업 TTS
+                self._speak_jetson_backup(message)
+            elif self.backup_tts == "native_say":
                 self._speak_macos(message, "normal")
             elif self.backup_tts == "pyttsx3":
                 self._speak_pyttsx3(message, "normal")
-            elif self.backup_tts == "espeak":
-                self._speak_espeak(message, "normal")
+            elif self.backup_tts == "festival":
+                self._speak_festival(message, "normal")
             else:
                 self._speak_pyttsx3(message, "normal")
             print(f"백업 TTS ({self.backup_tts}) 사용됨")
@@ -160,6 +326,29 @@ class UniversalTTS:
         except Exception as e:
             print(f"백업 TTS도 실패: {e}")
             print("음성 피드백을 제공할 수 없습니다.")
+    
+    def _speak_jetson_backup(self, message: str):
+        """젯슨 백업 TTS (Festival, Pico, Flite 순서로 시도)"""
+        try:
+            # Festival TTS
+            subprocess.run(['festival', '--tts', f'(SayText "{message}")'], check=True)
+            print("젯슨 백업 TTS (Festival) 사용됨")
+        except:
+            try:
+                # Pico TTS
+                subprocess.run(['pico2wave', '-w', 'temp_speech.wav', message], check=True)
+                subprocess.run(['aplay', 'temp_speech.wav'], check=True)
+                os.remove('temp_speech.wav')
+                print("젯슨 백업 TTS (Pico) 사용됨")
+            except:
+                # Flite TTS
+                subprocess.run(['flite', '-t', message], check=True)
+                print("젯슨 백업 TTS (Flite) 사용됨")
+    
+    def _speak_festival(self, message: str, priority: str):
+        """Festival TTS (Linux/젯슨)"""
+        rate = 0.8 if priority == "urgent" else 1.0
+        subprocess.run(['festival', '--tts', f'(SayText "{message}")'], check=True)
     
     def add_feedback(self, error_type: str, priority: str = "normal"):
         """지능적 피드백 추가 (잔소리꾼 방지)"""
@@ -250,6 +439,77 @@ class UniversalTTS:
         """TTS 매니저 정리"""
         self.running = False
         self.feedback_thread.join(timeout=1.0)
+
+    def _check_jetson_tts_tools(self):
+        """젯슨에서 필요한 TTS 도구들이 설치되어 있는지 확인하고 안내"""
+        print("\n" + "="*60)
+        print("젯슨 TTS 도구 설치 확인 중...")
+        print("="*60)
+        
+        tools_status = {}
+        
+        # Riva TTS 확인 (최고 성능)
+        try:
+            import nvidia.riva.client
+            tools_status['NVIDIA Riva TTS'] = "✅ 설치됨 (최고 성능)"
+        except ImportError:
+            tools_status['NVIDIA Riva TTS'] = "❌ 설치 필요 (권장)"
+        
+        # Festival TTS 확인
+        try:
+            subprocess.run(['festival', '--version'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            tools_status['Festival TTS'] = "✅ 설치됨"
+        except:
+            tools_status['Festival TTS'] = "❌ 설치 필요"
+        
+        # Pico TTS 확인
+        try:
+            subprocess.run(['pico2wave', '--help'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            tools_status['Pico TTS'] = "✅ 설치됨"
+        except:
+            tools_status['Pico TTS'] = "❌ 설치 필요"
+        
+        # Flite TTS 확인
+        try:
+            subprocess.run(['flite', '--help'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            tools_status['Flite TTS'] = "✅ 설치됨"
+        except:
+            tools_status['Flite TTS'] = "❌ 설치 필요"
+        
+        # MP3 재생 도구 확인
+        mp3_players = ['mpg123', 'ffplay', 'mpv', 'cvlc']
+        mp3_status = "❌ 설치 필요"
+        for player in mp3_players:
+            try:
+                subprocess.run([player, '--help'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                mp3_status = f"✅ {player} 사용 가능"
+                break
+            except:
+                continue
+        tools_status['MP3 Player'] = mp3_status
+        
+        # 상태 출력
+        for tool, status in tools_status.items():
+            print(f"{tool}: {status}")
+        
+        # 설치 안내
+        if any("❌" in status for status in tools_status.values()):
+            print("\n📋 젯슨에서 TTS 도구 설치 방법:")
+            print("\n🚀 NVIDIA Riva TTS (최고 성능):")
+            print("pip install nvidia-riva-client")
+            print("docker run --gpus all -p 8000:8000 nvcr.io/nvidia/riva/riva-speech:23.12-riva-client")
+            
+            print("\n🔧 기본 TTS 도구들:")
+            print("sudo apt-get update")
+            print("sudo apt-get install festival festvox-kallpc16k")  # Festival TTS
+            print("sudo apt-get install pico-utils")                  # Pico TTS
+            print("sudo apt-get install flite")                       # Flite TTS
+            print("sudo apt-get install mpg123")                      # MP3 재생
+            
+            print("\n📦 Python 패키지:")
+            print("pip install gtts pydub numpy")
+        
+        print("="*60 + "\n")
 
 def calculate_angle(a: list, b: list, c: list) -> float:
     """세 점 사이의 각도를 계산하는 함수 (결과값: 0-180)"""

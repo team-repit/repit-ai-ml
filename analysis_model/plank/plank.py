@@ -7,10 +7,8 @@ from typing import List, Dict, Tuple
 from collections import Counter
 
 # --- 경로 설정 ---
-# 입력 영상 파일 경로
-input_video_name = 'KakaoTalk_Video_2025-07-18-14-40-13.mp4'
 # 출력 파일 기본 이름
-output_file_base_name = 'KakaoTalk_Video_2025-07-18-14-40-13'
+output_file_base_name = 'plank_output'
 
 # --- 자동 넘버링으로 출력 경로 설정 ---
 n = 1
@@ -142,7 +140,22 @@ def save_report(report_path: str, hold_results: List[Dict]):
 
 
 # --- 메인 실행 로직 ---
-cap = cv2.VideoCapture(input_video_name)
+cap = cv2.VideoCapture(0)
+
+# --- 사용자에게 분석 시간 입력받기 ---
+try:
+    minutes = int(input("플랭크 분석 시간 - 몇 분? (정수로 입력): "))
+    seconds = int(input("플랭크 분석 시간 - 몇 초? (정수로 입력): "))
+except ValueError:
+    print("잘못된 입력입니다. 기본값 1분(60초)으로 진행합니다.")
+    minutes, seconds = 1, 0
+
+total_duration = minutes * 60 + seconds
+print(f"\n총 분석 시간: {total_duration}초 동안 플랭크 자세를 분석합니다.\n")
+
+# --- 시작 시간 기록 ---
+start_time = time.time()
+
 
 # 영상 저장을 위한 설정
 frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -158,7 +171,14 @@ current_hold_errors = Counter()
 is_holding = False
 hold_start_time = 0
 
+
+
 while cap.isOpened():
+    elapsed_time = time.time() - start_time
+    if elapsed_time >= total_duration:
+        print("분석 시간이 종료되었습니다.")
+        break
+
     ret, frame = cap.read()
     if not ret: break
 
